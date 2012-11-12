@@ -1,0 +1,477 @@
+#!/usr/bin/perl
+use strict;
+use Getopt::Std;
+use File::Basename;
+
+# Name:         burst (Build Right Solaris Tool)
+# Version:      1.0.0
+# Release:      1
+# License:      Open Source
+# Group:        System
+# Source:       N/A
+# URL:          http://lateralblast.com.au/
+# Distribution: Solaris
+# Vendor:       UNIX
+# Packager:     Richard Spindler <richard@lateralblast.com.au>
+# Description:  Solaris package creation tool
+
+# Changes       1.0.0 Tuesday, 13 November 2012  3:50:45 AM EST
+#               Initial commit to github
+
+# This script creates solaris packages from a source package or directory (TBD)
+# Source packages are fetched into a source directory, unpacked, compiled
+# and installed into a temporary directory. Then a solaris package is created
+#
+# The script creates the following working directories:
+# BASE/src   - Where the source tar is put or copied to and unpacked
+# BASE/ins   - Where the package is installed into
+# BASE/spool - Where the package is spooled into
+# BASE/trans - Where the spool is transformed into a package
+# BASE/pkg   - Where the filnal package is put
+#
+# If the package name and version are not given it will try to determine
+# them from the source file name, and vice versa, if no source name is 
+# give it will try to determine the source file name from the given
+# version and name and see if it is present in the BASE/src directory
+#
+# For example if given:
+# -n setoolkit -v 3.5.1
+# The script will look for setoolkit-3.5.1.[tar,tar.gz,tgz] in BASE/src
+#
+# For example if given:
+# -s setoolkit-3.5.1.[tar,tar.gz,tgz]
+# The script will determine the package name is setoolkit 
+# and the version is 3.5.1
+#
+# Similarly if not given a Solaris package name (-p switch) the script
+# will deduce the Solaris Package name from the source name
+# for example setoolkit will be packages as OSSsetoolkit 
+# If the release of the OS the package is being built on is less than 5.9
+# the package name will be truncated to 7 letters so it is compatible
+#
+
+
+my $script_name="burst";
+my %option=();
+my $package_install_dir="/usr/local";
+my $source_file_name;
+my $source_dir_name;
+my $tar_dir_name;
+my $maintainer_email="";
+my $package_base_name="LTRL";
+my $work_dir="$package_base_name/$script_name";
+my $cc_bin=`which gcc`;
+
+getopts("a:b:c:e:i:p:r:s:v:w:hD",\%option);
+
+# IF given -h print help
+
+if ($option{'h'}) {
+  usage();
+  exit;
+}
+
+sub usage {
+  print "\n";
+  print "Usage:\n";
+  print "$script_name [-w WORK_DIR] [-n SRC_PKG_NAME] [-p SOL_PKG_NAME] [-v PKG_VER] [-h]\n"; 
+  print "\n";
+  print "-h: Display help\n";
+  print "-w: Working (base) directory\n"; 
+  print "-p: Package name\n";
+  print "-s: Source file\n";
+  print "-a: Architecture (eg sparc)\n";
+  print "-b: Base package name (eg SUNW)\n";
+  print "-c: Category (default is application)\n";
+  print "-e: Email address of package maintainer\n";
+  print "-i: Install base dir (eg /usr/local)\n";
+  print "-D: Verbose output (debug)\n";
+  print "\n";
+  print "Example:\n";
+  print "$script_name -d /tmp/solpkg -s /tmp/setoolkit-3.5.1.tar -p BUPAse\n";
+  print "\n";
+  #print "\n";
+  return;
+}
+
+# Call the functions to build a package
+
+check_env();
+extract_source();
+compile_source();
+create_spool();
+create_trans();
+create_pkg();
+
+# Function: check_env
+# This function checks that enough detail has been given to build a package
+# As previously discussed it will try to determine package name and version
+# from the name of the source file if those have not been given explicitly
+# This code needs cleaning up
+
+sub check_env {
+
+  my $user_name;
+  my $home_dir=`echo \$HOME`;
+
+  chomp($cc_bin);
+  chomp($home_dir);
+  if ($cc_bin!~/cc/) {
+    if (-e "/usr/local/bin/gcc") {
+      $cc_bin="/usr/local/bin/gcc";
+    }
+    else {
+      if (-e "/usr/sfw/bin/gcc") {
+        $cc_bin="/usr/sfw/bin/gcc";
+      }
+      else {
+        if (-e "/opt/sfw/bin/gcc") {
+          $cc_bin="/opt/sfw/bin/gcc";
+        }
+      }
+    }
+  }
+  if (!$option{'i'}) {
+    if ($package_install_dir!~/[a-z]/) {
+      print "Package install directory not set\n";
+    }
+    else {
+      $option{'i'}=$package_install_dir;
+    }
+  }
+  if (!$option{'a'}) {
+    # If the architecture is not specified, get it
+    $option{'a'}=`uname -p`;
+    chomp($option{'a'});
+  }
+  if (!$option{'r'}) {
+    # If the OS version is not specified, get it
+    $option{'r'}=`uname -r |cut -f2 -d"."`;
+    chomp($option{'r'});
+  }
+  if (!$option{'c'}) {
+    $option{'c'}="application";
+  }
+  if (!$option{'b'}) {
+    if ($package_base_name!~/[A-z]/) {
+      print "Package base name (eg SUNW) not set\n";
+      exit;
+    }
+    else {
+      $option{'b'}=$package_base_name;
+    }
+  }
+  if (!$option{'w'}) {
+    if ($work_dir!~/[a-z]/) {
+      # If the work directory has not been given via -w
+      # and has not been set at the top of the script
+      # set it to tmp under the users home directory
+      $user_name=`/usr/xpg4/bin/who am i |awk '{print \$1}'`;
+      chomp($user_name);
+      if ($user_name=~/root/) {
+        $option{'w'}="/tmp/$script_name";
+      }
+      else {
+        $option{'w'}="$home_dir/$script_name";
+      }
+    }
+    else {
+      # If the work directory has not been given explicitly
+      # and it is set at the top of the script use that value
+      # If the work directory and sub directories don't exist
+      # create them
+      $option{'w'}=$work_dir;
+      if (! -e "$option{'w'}") {
+        print "Creating work directory ($option{'w'})...\n";
+        system("mkdir -p $option{'w'}/src");
+        system("mkdir $option{'w'}/ins");
+        system("mkdir $option{'w'}/spool");
+        system("mkdir $option{'w'}/trans");
+        system("mkdir $option{'w'}/pkg");
+      }
+    }
+  }
+  if (!$option{'s'}) {
+    if ((!$option{'n'})||(!$option{'v'})) {
+      # If the source file, version and name have not been given 
+      # exit as there is not enough information to continue
+      print "You must either specify the source file and/or the package name and version\n";
+      exit;
+    }
+    else {
+      # If not given a source file name, try to determine it
+      # from other information given, eg -n and -v
+      # If the source file does not exist then exit
+      determine_source_file_name();
+      if ($option{'s'}!~/[0-9]/) {
+        exit;
+      }
+    }
+  }
+  else {
+    if (!-e "$option{'s'}") {
+      # If the source file given via -s does not exist
+      # then try to guess it via -v and -n
+      # If the source file does not exist then exit
+      if (($option{'n'})&&($option{'v'})) {
+        determine_source_file_name();
+        if ($option{'s'}!~/[0-9]/) {
+          exit;
+        }
+      }
+      else {
+        print "Source file $option{'s'} does not exist\n";
+        exit;
+      }
+    }
+    else {
+      if ((!$option{'n'})||(!$option{'v'})) {
+        ($source_file_name,$source_dir_name)=fileparse($option{'s'});
+        if ($source_file_name!~/\-/) {
+          if ((!$option{'p'})||(!$option{'v'})) {
+            print "Sourcefile $source_file_name does not appear a standardly named source file and the name and version have not been given\n"; 
+            exit;
+          }
+        }
+        else {
+          ($option{'n'},$option{'v'})=split('\-',$source_file_name);
+          $option{'v'}=~s/\.tar\.gz//g;
+          $option{'v'}=~s/\.tar//g;
+          $option{'v'}=~s/\.tgz//g;
+        }
+      }
+    }
+    ($source_file_name,$source_dir_name)=fileparse($option{'s'});
+    if (!-e "$option{'w'}/src/$source_file_name") {
+      system("cp $option{'s'} $option{'w'}/src/$source_file_name");
+    }
+    $option{'s'}="$option{'w'}/src/$source_file_name";
+  }
+  if ((!$option{'n'})||(!$option{'v'})) {
+    ($source_file_name,$source_dir_name)=fileparse($option{'s'});
+    if ($source_file_name!~/\-/) {
+      if ((!$option{'p'})||(!$option{'v'})) {
+        print "Sourcefile $source_file_name does not appear a standardly named source file and the name and version have not been given\n"; 
+        exit;
+      }
+    }
+    else {
+      ($option{'n'},$option{'v'})=split('\-',$source_file_name);
+      $option{'v'}=~s/\.tar\.gz//g;
+      $option{'v'}=~s/\.tar//g;
+      $option{'v'}=~s/\.tgz//g;
+    }
+  }
+  if (!$option{'p'}) {
+    $option{'p'}="$option{'b'}$option{'n'}";
+  }
+  if (length($option{'p'}) > 7) {
+    $option{'p'}=substr($option{'p'},0,7);
+  }
+  if ($option{'D'}) {
+    print "Work dir:       $option{'w'}\n";
+    print "Source file:    $option{'s'}\n";
+    print "Solaris name:   $option{'p'}\n";
+    print "Source name:    $option{'n'}\n";
+    print "Source version: $option{'v'}\n";
+  }
+  if (!$option{'e'}) {
+    if ($maintainer_email!~/[a-z]/) {
+      $option{'e'}="";
+    }
+  }
+  return;
+}
+
+sub determine_source_file_name {
+
+  my @extensions; my $record; my $counter;
+  my $file_name_base="$option{'w'}/src/$option{'n'}-$option{'v'}";
+
+  $extensions[0]="tar";
+  $extensions[1]="tgz";
+  $extensions[2]="tar.gz";
+  for ($counter=0; $counter<@extensions; $counter++) {
+    if (-e "$file_name_base.$extensions[$counter]") {
+      $option{'s'}="$file_name_base.$extensions[$counter]";
+      return;
+    }
+  }
+  print "Source file not found\n";
+  return;
+}
+
+sub extract_source {
+
+  my $file_type;
+
+  if (-e "$option{'s'}") {
+    $file_type=`file $option{'s'}`;
+    chomp($file_type);
+    if ($file_type=~/USTAR tar archive/) {
+      if ($option{'D'}) {
+        print "Extracting $option{'s'} to $option{'w'}/src\n";
+      }
+      system("cd $option{'w'}/src ; tar -xf $option{'s'}");
+    }
+    if ($file_type=~/gzip compressed data/) {
+      if ($option{'D'}) {
+        print "Extracting $option{'s'} to $option{'w'}/src\n";
+      }
+      system("cd $option{'w'}/src ; gzcat $option{'s'} |tar -xf -");
+    }
+  }
+  else {
+    print "Source file $option{'s'} does not exist\n";
+    exit;
+  }
+
+}
+
+sub determine_source_dir_name {
+
+  my $dir_name=`tar -tf $option{'s'} |head -1`;
+  my @values=split("/",$dir_name);
+
+  $source_dir_name="$option{'w'}/src/$values[0]";
+  return;
+}
+
+sub compile_source {
+
+  my @commands; my $command;
+  my $ins_dir="$option{'w'}/ins";
+
+  determine_source_dir_name();
+  if ((-e "$ins_dir")&&($ins_dir=~/[A-z]/)) {
+    print "Cleaning up $ins_dir...\n";
+    system("cd $ins_dir ; rm -rf *");
+  }
+  if ($option{'n'}=~/orca/) {
+    $commands[0]="PATH=\$PATH:/usr/ccs/bin ; export PATH ; CC=$cc_bin ; export CC ; ./configure --prefix=$ins_dir --with-rrd-dir=/var/orca/rrd --with-html-dir=/var/orca/html --build=$option{'a'}-sun-solaris2.$option{'r'}";
+  }
+  else {
+    $commands[0]="export CC=$cc_bin ; ./configure --prefix=$ins_dir";
+  }
+  $commands[1]="make clean";
+  $commands[2]="make all";
+  $commands[3]="make install";
+  #$command[]="";
+
+  if (-e "$source_dir_name") {
+    foreach $command (@commands) {
+      if ($option{'D'}) {
+        print "Executing $command\n";
+      }
+      system ("cd $source_dir_name ; $command");
+    }
+  }
+  else {
+    print "Source file $option{'s'} does not exist\n";
+    exit;
+  }
+}
+
+# Create BASE/ins/[pkginfo,prototype] and produce a spooled package
+
+sub create_spool {
+
+  my $ins_dir="$option{'w'}/ins";
+  my $spool_dir="$option{'w'}/spool";
+  my $proto_file="$ins_dir/prototype";
+  my $info_file="$ins_dir/pkginfo";
+  my $pkg_string="PKG=\"$option{'p'}\"";
+  my $name_string="NAME=\"$option{'n'}\"";
+  my $arch_string="ARCH=\"$option{'a'}\"";
+  my $category_string="CATEGORY=\"$option{'c'}\"";
+  my $date_string=`date +%Y.%m.%d.%H.%M`;
+  my $email_string="EMAIL=\"$option{'e'}\"";
+  my $pstamp_string="PSTAMP=\"\"";
+  my $classes_string="CLASSES=\"none\"";
+  my $basedir_string="BASEDIR=\"$option{'i'}\"";
+  my $version_string; my $user_info=`id`;
+  my @values=split(" ",$user_info);
+  my $user_name=$values[0];
+  my $group_name=$values[1];
+  my $header; my $vendor_string;
+
+  if ((-e "$spool_dir")&&($spool_dir=~/[A-z]/)) {
+    print "Cleaning up $spool_dir...\n";
+    system("cd $spool_dir ; rm -rf *");
+  }
+  $vendor_string=lc($option{'b'});
+  $vendor_string=ucfirst($vendor_string);
+  $vendor_string="VENDOR=\"$vendor_string\"";	
+  ($header,$user_name)=split('\(',$user_name);	
+  ($header,$group_name)=split('\(',$group_name);	
+  $user_name=~s/\)//g;
+  $group_name=~s/\)//g;
+  chomp($date_string);
+  $version_string="VERSION=\"$option{'v'},REV=$date_string\"";
+  if ($option{'D'}) {
+    print "pkginfo file contents:\n";
+    print "$pkg_string\n";
+    print "$name_string\n";
+    print "$arch_string\n";
+    print "$version_string\n";
+    print "$vendor_string\n";
+  }
+  open PROTO_FILE,">$proto_file";
+  print PROTO_FILE "i pkginfo=./pkginfo\n";
+# system("cd $ins_dir ; echo 'i pkginfo=./pkginfo' > $proto_file");
+  close PROTO_FILE;
+  system("cd $ins_dir ; find . -print | grep -v pkginfo |pkgproto | sed 's/$user_name $group_name/root bin/g' >> $proto_file");
+  open INFO_FILE,">$info_file";
+  print INFO_FILE "$pkg_string\n";
+  print INFO_FILE "$name_string\n";
+  print INFO_FILE "$arch_string\n";
+  print INFO_FILE "$version_string\n";
+  print INFO_FILE "$category_string\n";
+  print INFO_FILE "$email_string\n";
+  print INFO_FILE "$pstamp_string\n";
+  print INFO_FILE "$basedir_string\n";
+  print INFO_FILE "$classes_string\n";
+  #system("cd $ins_dir ; echo '$pkg_string' > $info_file");
+  #system("cd $ins_dir ; echo '$name_string' >> $info_file");
+  #system("cd $ins_dir ; echo '$arch_string' >> $info_file");
+  #system("cd $ins_dir ; echo '$version_string' >> $info_file");
+  #system("cd $ins_dir ; echo '$category_string' >> $info_file");
+  #system("cd $ins_dir ; echo '$email_string' >> $info_file");
+  #system("cd $ins_dir ; echo '$pstamp_string' >> $info_file");
+  #system("cd $ins_dir ; echo '$basedir_string' >> $info_file");
+  #system("cd $ins_dir ; echo '$classes_string' >> $info_file");
+  close INFO_FILE;
+  return;
+
+
+# Run pkgmk to create transfer package
+
+sub create_trans {
+
+  my $ins_dir="$option{'w'}/ins";
+  my $trans_dir="$option{'w'}/trans";
+  my $spool_dir="$option{'w'}/spool";
+  my $proto_file="$ins_dir/prototype";
+
+  if ((-e "$trans_dir")&&($trans_dir=~/[A-z]/)) {
+    print "Cleaning up $trans_dir...\n";
+    system("cd $trans_dir ; rm -rf *");
+  }
+  if ($option{'D'}) {
+    print "Executing: cd $ins_dir ; pkgmk -o -r . -d $spool_dir -f $proto_file\n";
+  }
+  system("cd $ins_dir ; pkgmk -o -r . -d $spool_dir -f $proto_file");
+  return;
+}
+
+# Process transfer package into actual package
+
+sub create_pkg {
+  my $spool_dir="$option{'w'}/spool";
+  my $trans_dir="$option{'w'}/trans";
+  my $pkg_dir="$option{'w'}/pkg";
+  my $pkg_string="$option{'p'}";
+
+  system("cd $spool_dir ; pkgtrans $spool_dir $pkg_dir/$pkg_string-sol$option{'r'}-$option{'a'}.pkg $pkg_string");
+  return;
+}
