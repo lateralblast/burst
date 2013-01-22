@@ -4,7 +4,7 @@ use Getopt::Std;
 use File::Basename;
 
 # Name:         burst (Build Right Solaris Tool)
-# Version:      1.0.0
+# Version:      1.0.2
 # Release:      1
 # License:      Open Source
 # Group:        System
@@ -17,6 +17,10 @@ use File::Basename;
 
 # Changes       1.0.0 Tuesday, 13 November 2012  3:50:45 AM EST
 #               Initial commit to github
+#               1.0.1 Tue 13 Nov 2012 14:43:13 EST
+#               Cleaned up code
+#               1.0.2 Tue Jan 22 15:28:41 EST 2013
+#               Fixed error with code
 
 # This script creates solaris packages from a source package or directory (TBD)
 # Source packages are fetched into a source directory, unpacked, compiled
@@ -418,7 +422,6 @@ sub create_spool {
   }
   open PROTO_FILE,">$proto_file";
   print PROTO_FILE "i pkginfo=./pkginfo\n";
-# system("cd $ins_dir ; echo 'i pkginfo=./pkginfo' > $proto_file");
   close PROTO_FILE;
   system("cd $ins_dir ; find . -print | grep -v pkginfo |pkgproto | sed 's/$user_name $group_name/root bin/g' >> $proto_file");
   open INFO_FILE,">$info_file";
@@ -431,18 +434,9 @@ sub create_spool {
   print INFO_FILE "$pstamp_string\n";
   print INFO_FILE "$basedir_string\n";
   print INFO_FILE "$classes_string\n";
-  #system("cd $ins_dir ; echo '$pkg_string' > $info_file");
-  #system("cd $ins_dir ; echo '$name_string' >> $info_file");
-  #system("cd $ins_dir ; echo '$arch_string' >> $info_file");
-  #system("cd $ins_dir ; echo '$version_string' >> $info_file");
-  #system("cd $ins_dir ; echo '$category_string' >> $info_file");
-  #system("cd $ins_dir ; echo '$email_string' >> $info_file");
-  #system("cd $ins_dir ; echo '$pstamp_string' >> $info_file");
-  #system("cd $ins_dir ; echo '$basedir_string' >> $info_file");
-  #system("cd $ins_dir ; echo '$classes_string' >> $info_file");
   close INFO_FILE;
   return;
-
+}
 
 # Run pkgmk to create transfer package
 
