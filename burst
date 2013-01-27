@@ -3,8 +3,8 @@ use strict;
 use Getopt::Std;
 use File::Basename;
 
-# Name:         burst (Build Right Solaris Tool)
-# Version:      1.0.2
+# Name:         burst (Build Unaided Rules Seource Tool)
+# Version:      1.0.4
 # Release:      1
 # License:      Open Source
 # Group:        System
@@ -21,6 +21,10 @@ use File::Basename;
 #               Cleaned up code
 #               1.0.2 Tue Jan 22 15:28:41 EST 2013
 #               Fixed error with code
+#               1.0.3 Sun Jan 27 14:32:51 EST 2013
+#               A lot of updates including using DESTDIR
+#               1.0.4 Sun Jan 27 15:19:05 EST 2013
+#               Added postinstall and preremove scripts for setoolkit and orca
 
 # This script creates solaris packages from a source package or directory (TBD)
 # Source packages are fetched into a source directory, unpacked, compiled
@@ -53,26 +57,50 @@ use File::Basename;
 # If the release of the OS the package is being built on is less than 5.9
 # the package name will be truncated to 7 letters so it is compatible
 #
+# This script will try to make use of the make DESTDIR command to install
+# into an alternate directory so a package can be created, but not affect
+# the configure script
+#
+# If the package does not support DESTDIR then you will need to add special
+# handling, eg post handling of the Makefile
+#
 
 
 my $script_name="burst";
 my %option=();
-my $package_install_dir="/usr/local";
 my $source_file_name;
 my $source_dir_name;
 my $tar_dir_name;
-my $maintainer_email="";
-my $package_base_name="LTRL";
-my $work_dir="$package_base_name/$script_name";
+my $maintainer_email="richard\@lateralblast.com.au";
+my $top_install_dir="/opt";
+my $pkg_base_name="LTRL";
+my $real_install_dir;
+my $work_dir="";
 my $cc_bin=`which gcc`;
+my $vendor_string="Lateral Blast";
+my $log_file;
 
-getopts("a:b:c:e:i:p:r:s:v:w:hD",\%option);
+if ($#ARGV < 0) {
+  usage();
+  exit;
+}
+
+getopts("a:b:c:e:i:n:p:r:s:v:w:hD:",\%option);
 
 # IF given -h print help
 
 if ($option{'h'}) {
   usage();
   exit;
+}
+
+if ($option{'D'}) {
+  $log_file=$option{'D'};
+  if (-e "$log_file") {
+    system("rm $log_file");
+    system("touch $log_file");
+  }
+  open LOG_FILE,">$log_file";
 }
 
 sub usage {
@@ -92,7 +120,8 @@ sub usage {
   print "-D: Verbose output (debug)\n";
   print "\n";
   print "Example:\n";
-  print "$script_name -d /tmp/solpkg -s /tmp/setoolkit-3.5.1.tar -p BUPAse\n";
+  print "$script_name -d /tmp/$script_name -s /tmp/setoolkit-3.5.1.tar -p $pkg_base_name";
+  print "se\n";
   print "\n";
   #print "\n";
   return;
@@ -136,13 +165,16 @@ sub check_env {
     }
   }
   if (!$option{'i'}) {
-    if ($package_install_dir!~/[a-z]/) {
-      print "Package install directory not set\n";
-    }
-    else {
-      $option{'i'}=$package_install_dir;
+    # If real_install_dir not set at top of script, set it
+    if ($real_install_dir!~/[a-z]/) {
+      $real_install_dir="$top_install_dir/$pkg_base_name";
     }
   }
+  else {
+    # if -i used, set real_install_dir from command line
+    $real_install_dir=$option{'i'};
+  }
+  print "Setting package install directory to: $real_install_dir\n";
   if (!$option{'a'}) {
     # If the architecture is not specified, get it
     $option{'a'}=`uname -p`;
@@ -154,17 +186,19 @@ sub check_env {
     chomp($option{'r'});
   }
   if (!$option{'c'}) {
+    # IF category not set, set it
     $option{'c'}="application";
   }
   if (!$option{'b'}) {
-    if ($package_base_name!~/[A-z]/) {
+    if ($pkg_base_name!~/[A-z]/) {
       print "Package base name (eg SUNW) not set\n";
       exit;
     }
-    else {
-      $option{'b'}=$package_base_name;
-    }
   }
+  else {
+    $pkg_base_name=$option{'b'};
+  }
+  print "Setting package base name to $pkg_base_name\n";
   if (!$option{'w'}) {
     if ($work_dir!~/[a-z]/) {
       # If the work directory has not been given via -w
@@ -173,27 +207,39 @@ sub check_env {
       $user_name=`/usr/xpg4/bin/who am i |awk '{print \$1}'`;
       chomp($user_name);
       if ($user_name=~/root/) {
-        $option{'w'}="/tmp/$script_name";
+        # If root user, use /tmp
+        # It's not recommended to run this as root
+        $work_dir="/tmp/$script_name";
       }
       else {
-        $option{'w'}="$home_dir/$script_name";
+        $work_dir="$home_dir/$script_name";
       }
     }
-    else {
-      # If the work directory has not been given explicitly
-      # and it is set at the top of the script use that value
-      # If the work directory and sub directories don't exist
-      # create them
-      $option{'w'}=$work_dir;
-      if (! -e "$option{'w'}") {
-        print "Creating work directory ($option{'w'})...\n";
-        system("mkdir -p $option{'w'}/src");
-        system("mkdir $option{'w'}/ins");
-        system("mkdir $option{'w'}/spool");
-        system("mkdir $option{'w'}/trans");
-        system("mkdir $option{'w'}/pkg");
-      }
-    }
+  }
+  else {
+    # If given -w set work_dir from command line
+    $work_dir=$option{'w'};
+  }
+  print "Setting Work directory to: $work_dir\n";
+  if (! -e "$work_dir/src") {
+    print "Creating work directory ($work_dir/src)...\n";
+    system("mkdir -p $work_dir/src");
+  }
+  if (! -e "$work_dir/ins") {
+    print "Creating work directory ($work_dir/ins)...\n";
+    system("mkdir -p $work_dir/ins");
+  }
+  if (! -e "$work_dir/spool") {
+    print "Creating work directory ($work_dir/spool)...\n";
+    system("mkdir -p $work_dir/spool");
+  }
+  if (! -e "$work_dir/trans") {
+    print "Creating work directory ($work_dir/trans)...\n";
+    system("mkdir -p $work_dir/trans");
+  }
+  if (! -e "$work_dir/pkg") {
+    print "Creating work directory ($work_dir/pkg)...\n";
+    system("mkdir -p $work_dir/pkg");
   }
   if (!$option{'s'}) {
     if ((!$option{'n'})||(!$option{'v'})) {
@@ -246,10 +292,10 @@ sub check_env {
       }
     }
     ($source_file_name,$source_dir_name)=fileparse($option{'s'});
-    if (!-e "$option{'w'}/src/$source_file_name") {
-      system("cp $option{'s'} $option{'w'}/src/$source_file_name");
+    if (!-e "$work_dir/src/$source_file_name") {
+      system("cp $option{'s'} $work_dir/src/$source_file_name");
     }
-    $option{'s'}="$option{'w'}/src/$source_file_name";
+    $option{'s'}="$work_dir/src/$source_file_name";
   }
   if ((!$option{'n'})||(!$option{'v'})) {
     ($source_file_name,$source_dir_name)=fileparse($option{'s'});
@@ -267,17 +313,22 @@ sub check_env {
     }
   }
   if (!$option{'p'}) {
-    $option{'p'}="$option{'b'}$option{'n'}";
+    $option{'p'}="$pkg_base_name$option{'n'}";
   }
   if (length($option{'p'}) > 7) {
     $option{'p'}=substr($option{'p'},0,7);
   }
   if ($option{'D'}) {
-    print "Work dir:       $option{'w'}\n";
+    print "Work dir:       $work_dir\n";
+    print LOG_FILE "Work dir:       $work_dir\n";
     print "Source file:    $option{'s'}\n";
+    print LOG_FILE "Source file:    $option{'s'}\n";
     print "Solaris name:   $option{'p'}\n";
+    print LOG_FILE "Solaris name:   $option{'p'}\n";
     print "Source name:    $option{'n'}\n";
+    print LOG_FILE "Source name:    $option{'n'}\n";
     print "Source version: $option{'v'}\n";
+    print LOG_FILE "Source version: $option{'v'}\n";
   }
   if (!$option{'e'}) {
     if ($maintainer_email!~/[a-z]/) {
@@ -290,12 +341,23 @@ sub check_env {
 sub determine_source_file_name {
 
   my @extensions; my $record; my $counter;
-  my $file_name_base="$option{'w'}/src/$option{'n'}-$option{'v'}";
+  my $file_name_base="$work_dir/src/$option{'n'}-$option{'v'}";
 
   $extensions[0]="tar";
   $extensions[1]="tgz";
   $extensions[2]="tar.gz";
+  $extensions[3]="tar.bz2";
+  $extensions[4]="tbz2";
+  if ($option{'n'}=~/orca/) {
+    # Add handling for orca snapshots
+    if ($option{'v'}!~/0\.2/) {
+      $file_name_base=~s/orca-/orca-snapshot-r/g;
+    }
+  }
   for ($counter=0; $counter<@extensions; $counter++) {
+    if ($option{"D"}) {
+      print "Seeing if $file_name_base.$extensions[$counter] exits\n"; 
+    }
     if (-e "$file_name_base.$extensions[$counter]") {
       $option{'s'}="$file_name_base.$extensions[$counter]";
       return;
@@ -308,21 +370,21 @@ sub determine_source_file_name {
 sub extract_source {
 
   my $file_type;
-
   if (-e "$option{'s'}") {
     $file_type=`file $option{'s'}`;
     chomp($file_type);
+    if ($option{'D'}) {
+      print "Extracting $option{'s'} to $work_dir/src\n";
+      print LOG_FILE "Extracting $option{'s'} to $work_dir/src\n";
+    }
     if ($file_type=~/USTAR tar archive/) {
-      if ($option{'D'}) {
-        print "Extracting $option{'s'} to $option{'w'}/src\n";
-      }
-      system("cd $option{'w'}/src ; tar -xf $option{'s'}");
+      system("cd $work_dir/src ; tar -xf $option{'s'}");
     }
     if ($file_type=~/gzip compressed data/) {
-      if ($option{'D'}) {
-        print "Extracting $option{'s'} to $option{'w'}/src\n";
-      }
-      system("cd $option{'w'}/src ; gzcat $option{'s'} |tar -xf -");
+      system("cd $work_dir/src ; gzcat $option{'s'} |tar -xf -");
+    }
+    if ($file_type=~/bzip2 compressed data/) {
+      system("cd $work_dir/src ; bzcat $option{'s'} |tar -xf -");
     }
   }
   else {
@@ -336,36 +398,94 @@ sub determine_source_dir_name {
 
   my $dir_name=`tar -tf $option{'s'} |head -1`;
   my @values=split("/",$dir_name);
+  my $conf_string;
 
-  $source_dir_name="$option{'w'}/src/$values[0]";
+  $source_dir_name="$work_dir/src/$values[0]";
+  chomp($source_dir_name);
   return;
 }
 
 sub compile_source {
 
   my @commands; my $command;
-  my $ins_dir="$option{'w'}/ins";
+  my $ins_dir="$work_dir/ins";
+  my $conf_string; my $counter=0;
+  my @files; my $file; my $se_version;
+  my $ins_pkg_dir="$ins_dir$real_install_dir";
+  
+  # Reminder:
+  # ins_dir = Root of work directory, eg /export/home/user/burst/ins
+  # This is the directory that DESTDIR will be give to simulate installing into /
+  # ins_pkg_dir is the package specific directory, eg /export/home/user/burst/ins/usr/local
+  # This would be used to simulate /use/local under DESTDIR
+  # Out of politeness it would be good to direct configs to $ins_pkg_dir/etc (/usr/local/etc)
+  # rather than $ins_dir/etc (/etc) so the package keeps things away from the system
+  # as much as possible
 
   determine_source_dir_name();
-  if ((-e "$ins_dir")&&($ins_dir=~/[A-z]/)) {
-    print "Cleaning up $ins_dir...\n";
-    system("cd $ins_dir ; rm -rf *");
-  }
-  if ($option{'n'}=~/orca/) {
-    $commands[0]="PATH=\$PATH:/usr/ccs/bin ; export PATH ; CC=$cc_bin ; export CC ; ./configure --prefix=$ins_dir --with-rrd-dir=/var/orca/rrd --with-html-dir=/var/orca/html --build=$option{'a'}-sun-solaris2.$option{'r'}";
+  if ($option{'n'}=~/orca|setoolkit/) {
+    if ($option{'n'}=~/orca/) {
+      $conf_string="--prefix=$real_install_dir --with-rrd-dir=/var/orca/rrd --with-html-dir=/var/orca/html --with-var-dir=/var/orca --build=$option{'a'}-sun-solaris2.$option{'r'} --radius_db=off";
+      $commands[$counter]="ORCA_CONFIGURE_COMMAND_LINE=\"$conf_string\" ; export ORCA_CONFIGURE_COMMAND_LINE ; PATH=\"\$PATH:/usr/ccs/bin\" ; export PATH ; CC=\"$cc_bin\" ; export CC ; ./configure $conf_string"; $counter++;
+    }
+    if ($option{'n'}=~/setoolkit/) {
+      $commands[$counter]="CC=\"$cc_bin\" ; export CC ; ./configure --prefix=$real_install_dir --with-se-include-dir=$real_install_dir/include --with-se-examples-dir=$real_install_dir/examples"; $counter++;
+    }
   }
   else {
-    $commands[0]="export CC=$cc_bin ; ./configure --prefix=$ins_dir";
+    $commands[$counter]="CC=\"$cc_bin\" ; export CC ; ./configure --prefix=$real_install_dir"; $counter++;
   }
-  $commands[1]="make clean";
-  $commands[2]="make all";
-  $commands[3]="make install";
-  #$command[]="";
-
+  $commands[$counter]="make clean"; $counter++;
+  $commands[$counter]="make all"; $counter++;
+  $commands[$counter]="cd $ins_dir ; rm -rf *"; $counter++;
+  $commands[$counter]="make DESTDIR=$ins_dir install"; $counter++;
+  if ($option{'n'}=~/setoolkit/) {
+    $commands[$counter]="cp $ins_pkg_dir/bin/se $ins_pkg_dir/bin/se.orig"; $counter++;
+    $commands[$counter]="cat $ins_pkg_dir/bin/se.orig |sed 's,^ARCH.*,ARCH=\"\",' > $ins_pkg_dir/bin/se"; $counter++;
+    $commands[$counter]="rm $ins_pkg_dir/bin/se.orig"; $counter++;
+    if ($option{'r'}=~/6/) {
+      $se_version="3.2.1"
+    }
+    if ($option{'r'}=~/7|8/) {
+      $se_version="3.3.1"
+    }
+    if ($option{'r'}=~/9|10/) {
+      $se_version="3.4"
+    }
+    $commands[$counter]="cp $ins_pkg_dir/bin/se $ins_pkg_dir/bin/se.orig"; $counter++;
+    $commands[$counter]="cat $ins_pkg_dir/bin/se.orig |sed 's,SEINCLUDE=\"\$TOP\"/include.*,SEINCLUDE=\"\$TOP\"/include:$real_install_dir/lib/SE/$se_version,' > $ins_pkg_dir/bin/se"; $counter++;
+    $commands[$counter]="rm $ins_pkg_dir/bin/se.orig"; $counter++;
+  }
+  if ($option{'n'}=~/orca/) {
+    # If GNU tools are installed the configure script finds them
+    # Replace them with the standard tools in the orca scripts
+    $commands[$counter]="cp $ins_pkg_dir/bin/start_orca_services $ins_pkg_dir/bin/start_orca_services.orig"; $counter++;
+    $commands[$counter]="cat $ins_pkg_dir/bin/start_orca_services.orig |sed 's,^\$CAT=.*,\$CAT=/bin/cat,' > $ins_pkg_dir/bin/start_orca_services"; $counter++;
+    $commands[$counter]="rm $ins_pkg_dir/bin/start_orca_services.orig"; $counter++;
+    $commands[$counter]="cp $ins_pkg_dir/bin/start_orca_services $ins_pkg_dir/bin/start_orca_services.orig"; $counter++;
+    $commands[$counter]="cat $ins_pkg_dir/bin/start_orca_services.orig |sed 's,^\$ECHO=.*,\$ECHO=/bin/echo,' > $ins_pkg_dir/bin/start_orca_services"; $counter++;
+    $commands[$counter]="rm $ins_pkg_dir/bin/start_orca_services.orig"; $counter++; 
+    $commands[$counter]="cp $ins_pkg_dir/bin/start_orca_services $ins_dir/bin/start_orca_services.orig"; $counter++;
+    $commands[$counter]="cat $ins_pkg_dir/bin/start_orca_services.orig |sed 's,^\$TOUCH=.*,\$TOUCH=/bin/touch,' > $ins_pkg_dir/bin/start_orca_services"; $counter++;
+    $commands[$counter]="rm $ins_pkg_dir/bin/start_orca_services.orig"; $counter++; 
+    # Fix up location of SE
+    $commands[$counter]="cp $ins_pkg_dir/bin/start_orcallator $ins_pkg_dir/bin/start_orcallator.orig"; $counter++;
+    $commands[$counter]="cat $ins_pkg_dir/bin/start_orcallator.orig |sed 's,^SE=.*,SE=$real_install_dir/bin/se,' > $ins_pkg_dir/bin/start_orcallator"; $counter++;
+    $commands[$counter]="rm $ins_pkg_dir/bin/start_orcallator.orig"; $counter++;
+    
+  }
   if (-e "$source_dir_name") {
+    if ($option{'n'}=~/orca/) {
+      # Fix up problem with handling $@ in orca configure script
+      if ( -e "$source_dir_name/configure") {
+        system ("cd $source_dir_name ; cp ./configure ./configure.old ; cat ./configure |sed 's/^ORCA_CONFIGURE_COMMAND_LINE/#&/g' > ./configure.new ; cat ./configure.new > ./configure");
+        system ("cd $source_dir_name ; $command");
+      }
+    }
     foreach $command (@commands) {
       if ($option{'D'}) {
         print "Executing $command\n";
+        print LOG_FILE "Executing $command\n";
       }
       system ("cd $source_dir_name ; $command");
     }
@@ -380,9 +500,11 @@ sub compile_source {
 
 sub create_spool {
 
-  my $ins_dir="$option{'w'}/ins";
-  my $spool_dir="$option{'w'}/spool";
+  my $ins_dir="$work_dir/ins";
+  my $ins_pkg_dir="$ins_dir$real_install_dir";
+  my $spool_dir="$work_dir/spool";
   my $proto_file="$ins_dir/prototype";
+  my $post_file="$ins_dir/postinstall";
   my $info_file="$ins_dir/pkginfo";
   my $pkg_string="PKG=\"$option{'p'}\"";
   my $name_string="NAME=\"$option{'n'}\"";
@@ -392,19 +514,29 @@ sub create_spool {
   my $email_string="EMAIL=\"$option{'e'}\"";
   my $pstamp_string="PSTAMP=\"\"";
   my $classes_string="CLASSES=\"none\"";
-  my $basedir_string="BASEDIR=\"$option{'i'}\"";
+  my $basedir_string="BASEDIR=\"/\"";
   my $version_string; my $user_info=`id`;
   my @values=split(" ",$user_info);
   my $user_name=$values[0];
   my $group_name=$values[1];
-  my $header; my $vendor_string;
+  my $header; my $init_file;
+  my $postinstall_file="$ins_dir/postinstall";
+  my $preremove_file="$ins_dir/preremove";
+  my @file_contents;
+
+  # Reminder:
+  # ins_dir = Root of work directory, eg /export/home/user/burst/ins
+  # This is the directory that DESTDIR will be give to simulate installing into /
+  # ins_pkg_dir is the package specific directory, eg /export/home/user/burst/ins/usr/local
+  # This would be used to simulate /use/local under DESTDIR
+  # Out of politeness it would be good to direct configs to $ins_pkg_dir/etc (/usr/local/etc)
+  # rather than $ins_dir/etc (/etc) so the package keeps things away from the system
+  # as much as possible
 
   if ((-e "$spool_dir")&&($spool_dir=~/[A-z]/)) {
     print "Cleaning up $spool_dir...\n";
     system("cd $spool_dir ; rm -rf *");
   }
-  $vendor_string=lc($option{'b'});
-  $vendor_string=ucfirst($vendor_string);
   $vendor_string="VENDOR=\"$vendor_string\"";	
   ($header,$user_name)=split('\(',$user_name);	
   ($header,$group_name)=split('\(',$group_name);	
@@ -414,16 +546,121 @@ sub create_spool {
   $version_string="VERSION=\"$option{'v'},REV=$date_string\"";
   if ($option{'D'}) {
     print "pkginfo file contents:\n";
+    print LOG_FILE "pkginfo file contents:\n";
     print "$pkg_string\n";
+    print LOG_FILE "$pkg_string\n";
     print "$name_string\n";
+    print LOG_FILE "$name_string\n";
     print "$arch_string\n";
+    print LOG_FILE "$arch_string\n";
     print "$version_string\n";
+    print LOG_FILE "$version_string\n";
     print "$vendor_string\n";
+    print LOG_FILE "$category_string\n";
+    print "$category_string\n";
+    print LOG_FILE "$email_string\n";
+    print "$email_string\n";
+    print LOG_FILE "$pstamp_string\n";
+    print "$pstamp_string\n";
+    print LOG_FILE "$basedir_string\n";
+    print "$basedir_string\n";
+    print LOG_FILE "$classes_string\n";
+    print "$classes_string\n";
   }
   open PROTO_FILE,">$proto_file";
   print PROTO_FILE "i pkginfo=./pkginfo\n";
+  if ($option{'n'}=~/orca/) {
+    # Add postinstall and preremove scripts to package
+    print PROTO_FILE "i postinstall=./postinstall\n";
+    print PROTO_FILE "i preremove=./preremove\n";
+    open POSTINSTALL_FILE,">$postinstall_file";
+    # Create /var/* in postinstall
+    print POSTINSTALL_FILE "#!/bin/sh\n";
+    print POSTINSTALL_FILE "mkdir -p /var/orca/rrd\n";
+    print POSTINSTALL_FILE "mkdir -p /var/orca/html\n";
+    print POSTINSTALL_FILE "mkdir -p /var/orca/`hostname`\n";
+    open PREREMOVE_FILE,">$preremove_file";
+    system("mkdir -p $ins_pkg_dir/etc");
+    if ($option{'r'}=~/10/) { 
+      # If on Solaris 10 create service manifest 
+      # and get postinstall script to install it
+      $init_file="$ins_pkg_dir/etc/orcallator.xml";
+      open INIT_FILE,">$init_file";
+      print INIT_FILE "<?xml version=\"1.0\"?>\n";
+      print INIT_FILE "<!DOCTYPE service_bundle SYSTEM \"/usr/share/lib/xml/dtd/service_bundle.dtd.1\">\n";
+      print INIT_FILE "<service_bundle type='manifest' name='orcallator:default'>";
+      print INIT_FILE "<service name='application/orcallator' type='service' version='1'>\n";
+      print INIT_FILE "<create_default_instance enabled='true' />\n";
+      print INIT_FILE "<single_instance />";
+      print INIT_FILE "<exec_method type='method' name='start'  exec='$real_install_dir/bin/start_orcallator' timeout_seconds=\"60\" />\n";
+      print INIT_FILE "<exec_method type='method' name='stop'  exec='$real_install_dir/bin/stop_orcallator' timeout_seconds=\"60\" />\n";
+      print INIT_FILE "</service>\n";
+      print INIT_FILE "</service_bundle>\n";
+      
+      print POSTINSTALL_FILE "svccfg import $real_install_dir/etc/orcallator.xml\n";
+      print POSTINSTALL_FILE "svcadm enable application/orcallator\n";
+      print PREREMOVE_FILE "#!/bin/sh\n";
+      print PREREMOVE_FILE "svcadm disable application/orcallator\n";
+      print PREREMOVE_FILE "svccfg delete -f application/orcallator\n";
+
+    }
+    else {
+      # If not on Solaris 10 create standard init script 
+      # and get postinstall script to install it
+      $init_file="$ins_pkg_dir/etc/orcallator.init";
+      open INIT_FILE,">$init_file";
+      print INIT_FILE "#!/bin/sh\n";
+      print INIT_FILE "\n";
+      print INIT_FILE "case \"\$1\" in\n";
+      print INIT_FILE "\tstart)\n";
+      print INIT_FILE "\t\t$real_install_dir/bin/start_orcallator\n";
+      print INIT_FILE "\t\t;;\n";
+      print INIT_FILE "\tstop)\n";
+      print INIT_FILE "\t\t$real_install_dir/bin/stop_orcallator\n";
+      print INIT_FILE "\t\t;;\n";
+      print INIT_FILE "\t*)\n";
+      print INIT_FILE "\t\techo \"usage: \$0 {start|stop}\"\n";
+      print INIT_FILE "\t\texit 1\n";
+      print INIT_FILE "\t\t;;\n";
+      print INIT_FILE "esac\n";
+      print INIT_FILE "\n";
+      print INIT_FILE "exit 0\n";
+      print POSTINSTALL_FILE "cp $real_install_dir/etc/orcallator.init /etc/init.d/orcallator\n";
+      print POSTINSTALL_FILE "chmod 755 /etc/init.d/orcallator\n";
+      print POSTINSTALL_FILE "chown root:sys /etc/init.d/orcallator\n";
+      print POSTINSTALL_FILE "/etc/init.d/orcallator start\n";
+      print POSTINSTALL_FILE "ln -s /etc/init.d/orcallator /etc/rc0.d/K01orcallator\n";
+      print POSTINSTALL_FILE "ln -s /etc/init.d/orcallator /etc/rc1.d/K01orcallator\n";
+      print POSTINSTALL_FILE "ln -s /etc/init.d/orcallator /etc/rc2.d/S99orcallator\n";
+      print POSTINSTALL_FILE "ln -s /etc/init.d/orcallator /etc/rc3.d/S99orcallator\n";
+      print PREREMOVE_FILE "#!/bin/sh\n";
+      print PREREMOVE_FILE "/etc/init.d/orcallator stop\n";
+      print PREREMOVE_FILE "rm /etc/init.d/orcallator\n";
+      print PREREMOVE_FILE "rm /etc/rc0.d/K01orcallator\n";
+      print PREREMOVE_FILE "rm /etc/rc1.d/K01orcallator\n";
+      print PREREMOVE_FILE "rm /etc/rc2.d/S99orcallator\n";
+      print PREREMOVE_FILE "rm /etc/rc3.d/S99orcallator\n";
+    }
+    close INIT_FILE;
+    close POSTINSTALL_FILE;
+    close PREREMOVE_FILE;
+    system("chmod 0755 $init_file");
+    system("chmod 0755 $postinstall_file");
+    system("chmod 0755 $preremove_file");
+    if ($option{'D'}) {
+      print LOG_FILE "Contents of $init_file:\n";
+      @file_contents=`cat $init_file`;
+      print LOG_FILE " @file_contents";
+      print LOG_FILE "Contents of $postinstall_file:\n";
+      @file_contents=`cat $postinstall_file`;
+      print LOG_FILE " @file_contents";
+      print LOG_FILE "Contents of $preremove_file:\n";
+      @file_contents=`cat $preremove_file`;
+      print LOG_FILE " @file_contents";
+    }
+  }
   close PROTO_FILE;
-  system("cd $ins_dir ; find . -print | grep -v pkginfo |pkgproto | sed 's/$user_name $group_name/root bin/g' >> $proto_file");
+  system("cd $ins_dir ; find . -print |grep -v './pkginfo' |grep -v './prototype' |grep -v './postinstall' |grep -v './preremove' |pkgproto | sed 's/$user_name $group_name/root bin/g' |sed 's/d none opt 0755 root bin/d none opt 0755 root sys/g' >> $proto_file");
   open INFO_FILE,">$info_file";
   print INFO_FILE "$pkg_string\n";
   print INFO_FILE "$name_string\n";
@@ -442,10 +679,11 @@ sub create_spool {
 
 sub create_trans {
 
-  my $ins_dir="$option{'w'}/ins";
-  my $trans_dir="$option{'w'}/trans";
-  my $spool_dir="$option{'w'}/spool";
+  my $ins_dir="$work_dir/ins";
+  my $trans_dir="$work_dir/trans";
+  my $spool_dir="$work_dir/spool";
   my $proto_file="$ins_dir/prototype";
+  my @prototype;
 
   if ((-e "$trans_dir")&&($trans_dir=~/[A-z]/)) {
     print "Cleaning up $trans_dir...\n";
@@ -453,6 +691,10 @@ sub create_trans {
   }
   if ($option{'D'}) {
     print "Executing: cd $ins_dir ; pkgmk -o -r . -d $spool_dir -f $proto_file\n";
+    @prototype=`cat $proto_file`;
+    print LOG_FILE "prototype file contents:\n";
+    print LOG_FILE " @prototype";
+    print LOG_FILE "Executing: cd $ins_dir ; pkgmk -o -r . -d $spool_dir -f $proto_file\n";
   }
   system("cd $ins_dir ; pkgmk -o -r . -d $spool_dir -f $proto_file");
   return;
@@ -461,11 +703,15 @@ sub create_trans {
 # Process transfer package into actual package
 
 sub create_pkg {
-  my $spool_dir="$option{'w'}/spool";
-  my $trans_dir="$option{'w'}/trans";
-  my $pkg_dir="$option{'w'}/pkg";
+  my $spool_dir="$work_dir/spool";
+  my $trans_dir="$work_dir/trans";
+  my $pkg_dir="$work_dir/pkg";
   my $pkg_string="$option{'p'}";
 
+  if ($option{'D'}) {
+    print "Executing: cd $spool_dir ; pkgtrans $spool_dir $pkg_dir/$pkg_string-sol$option{'r'}-$option{'a'}.pkg $pkg_string\n";
+    print LOG_FILE "Executing: cd $spool_dir ; pkgtrans $spool_dir $pkg_dir/$pkg_string-sol$option{'r'}-$option{'a'}.pkg $pkg_string\n";
+  }
   system("cd $spool_dir ; pkgtrans $spool_dir $pkg_dir/$pkg_string-sol$option{'r'}-$option{'a'}.pkg $pkg_string");
   return;
 }
