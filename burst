@@ -3,7 +3,7 @@ use strict;
 use Getopt::Std;
 use File::Basename;
 
-# Name:         burst (Build Unaided Rules Seource Tool)
+# Name:         burst (Build Unaided Rules Source Tool)
 # Version:      1.0.4
 # Release:      1
 # License:      Open Source
