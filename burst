@@ -4,7 +4,7 @@ use Getopt::Std;
 use File::Basename;
 
 # Name:         burst (Build Unaided Rules Source Tool)
-# Version:      1.0.4
+# Version:      1.0.5
 # Release:      1
 # License:      Open Source
 # Group:        System
@@ -25,6 +25,8 @@ use File::Basename;
 #               A lot of updates including using DESTDIR
 #               1.0.4 Sun Jan 27 15:19:05 EST 2013
 #               Added postinstall and preremove scripts for setoolkit and orca
+#               1.0.5 Mon Jan 28 18:20:42 EST 2013
+#               Added server manifest for orcallator
 
 # This script creates solaris packages from a source package or directory (TBD)
 # Source packages are fetched into a source directory, unpacked, compiled
@@ -462,17 +464,78 @@ sub compile_source {
     $commands[$counter]="cp $ins_pkg_dir/bin/start_orca_services $ins_pkg_dir/bin/start_orca_services.orig"; $counter++;
     $commands[$counter]="cat $ins_pkg_dir/bin/start_orca_services.orig |sed 's,^\$CAT=.*,\$CAT=/bin/cat,' > $ins_pkg_dir/bin/start_orca_services"; $counter++;
     $commands[$counter]="rm $ins_pkg_dir/bin/start_orca_services.orig"; $counter++;
+    
     $commands[$counter]="cp $ins_pkg_dir/bin/start_orca_services $ins_pkg_dir/bin/start_orca_services.orig"; $counter++;
     $commands[$counter]="cat $ins_pkg_dir/bin/start_orca_services.orig |sed 's,^\$ECHO=.*,\$ECHO=/bin/echo,' > $ins_pkg_dir/bin/start_orca_services"; $counter++;
-    $commands[$counter]="rm $ins_pkg_dir/bin/start_orca_services.orig"; $counter++; 
-    $commands[$counter]="cp $ins_pkg_dir/bin/start_orca_services $ins_dir/bin/start_orca_services.orig"; $counter++;
+    $commands[$counter]="rm $ins_pkg_dir/bin/start_orca_services.orig"; $counter++;
+     
+    $commands[$counter]="cp $ins_pkg_dir/bin/start_orca_services $ins_pkg_dir/bin/start_orca_services.orig"; $counter++;
     $commands[$counter]="cat $ins_pkg_dir/bin/start_orca_services.orig |sed 's,^\$TOUCH=.*,\$TOUCH=/bin/touch,' > $ins_pkg_dir/bin/start_orca_services"; $counter++;
     $commands[$counter]="rm $ins_pkg_dir/bin/start_orca_services.orig"; $counter++; 
+    
     # Fix up location of SE
+    
     $commands[$counter]="cp $ins_pkg_dir/bin/start_orcallator $ins_pkg_dir/bin/start_orcallator.orig"; $counter++;
     $commands[$counter]="cat $ins_pkg_dir/bin/start_orcallator.orig |sed 's,^SE=.*,SE=$real_install_dir/bin/se,' > $ins_pkg_dir/bin/start_orcallator"; $counter++;
     $commands[$counter]="rm $ins_pkg_dir/bin/start_orcallator.orig"; $counter++;
     
+    $commands[$counter]="cp $ins_pkg_dir/bin/start_orcallator $ins_pkg_dir/bin/start_orcallator.orig"; $counter++;
+    $commands[$counter]="cat $ins_pkg_dir/bin/start_orcallator.orig |sed 's,\$libdir/orcallator,$real_install_dir/share/setoolkit/orcallator/orcallator,' > $ins_pkg_dir/bin/start_orcallator"; $counter++;
+    $commands[$counter]="rm $ins_pkg_dir/bin/start_orcallator.orig"; $counter++;
+    
+    # Fix configuration files
+    
+    $commands[$counter]="cp $ins_pkg_dir/etc/orca_services.cfg $ins_pkg_dir/etc/orca_services.cfg.orig"; $counter++;
+    $commands[$counter]="cat $ins_pkg_dir/etc/orca_services.cfg.orig |sed 's,$real_install_dir/orca,/var/orca,' > $ins_pkg_dir/etc/orca_services.cfg"; $counter++;
+    $commands[$counter]="rm $ins_pkg_dir/etc/orca_services.cfg.orig"; $counter++;
+    
+    $commands[$counter]="cp $ins_pkg_dir/etc/orca_services.cfg $ins_pkg_dir/etc/orca_services.cfg.orig"; $counter++;
+    $commands[$counter]="cat $ins_pkg_dir/etc/orca_services.cfg.orig |sed 's,/var/orca/var,/var/orca,' > $ins_pkg_dir/etc/orca_services.cfg"; $counter++;
+    $commands[$counter]="rm $ins_pkg_dir/etc/orca_services.cfg.orig"; $counter++;
+    
+    $commands[$counter]="cp $ins_pkg_dir/etc/orcallator.cfg $ins_pkg_dir/etc/orcallator.cfg.orig"; $counter++;
+    $commands[$counter]="cat $ins_pkg_dir/etc/orcallator.cfg.orig |sed 's,$real_install_dir/orca,/var/orca,' > $ins_pkg_dir/etc/orcallator.cfg"; $counter++;
+    $commands[$counter]="rm $ins_pkg_dir/etc/orcallator.cfg.orig"; $counter++;
+    
+    $commands[$counter]="cp $ins_pkg_dir/etc/orcallator.cfg $ins_pkg_dir/etc/orcallator.cfg.orig"; $counter++;
+    $commands[$counter]="cat $ins_pkg_dir/etc/orcallator.cfg.orig |sed 's,/var/orca/var,/var/orca,' > $ins_pkg_dir/etc/orcallator.cfg"; $counter++;
+    $commands[$counter]="rm $ins_pkg_dir/etc/orcallator.cfg.orig"; $counter++;
+    
+    $commands[$counter]="cp $ins_pkg_dir/etc/orcallator.cfg $ins_pkg_dir/etc/orcallator.cfg.orig"; $counter++;
+    $commands[$counter]="cat $ins_pkg_dir/etc/orcallator.cfg.orig |sed 's,/orcallator\$,,' > $ins_pkg_dir/etc/orcallator.cfg"; $counter++;
+    $commands[$counter]="rm $ins_pkg_dir/etc/orcallator.cfg.orig"; $counter++;
+    
+    $commands[$counter]="cp $ins_pkg_dir/etc/procallator.cfg $ins_pkg_dir/etc/procallator.cfg.orig"; $counter++;
+    $commands[$counter]="cat $ins_pkg_dir/etc/procallator.cfg.orig |sed 's,$real_install_dir/orca,/var,' > $ins_pkg_dir/etc/procallator.cfg"; $counter++;
+    $commands[$counter]="rm $ins_pkg_dir/etc/procallator.cfg.orig"; $counter++;
+    
+    $commands[$counter]="cp $ins_pkg_dir/etc/procallator.cfg $ins_pkg_dir/etc/procallator.cfg.orig"; $counter++;
+    $commands[$counter]="cat $ins_pkg_dir/etc/procallator.cfg.orig |sed 's,/var/orca/var,/var/orca,' > $ins_pkg_dir/etc/procallator.cfg"; $counter++;
+    $commands[$counter]="rm $ins_pkg_dir/etc/procallator.cfg.orig"; $counter++;
+    
+    $commands[$counter]="cp $ins_pkg_dir/etc/winallator.cfg $ins_pkg_dir/etc/winallator.cfg.orig"; $counter++;
+    $commands[$counter]="cat $ins_pkg_dir/etc/winallator.cfg.orig |sed 's,$real_install_dir/orca,/var,' > $ins_pkg_dir/etc/winallator.cfg"; $counter++;
+    $commands[$counter]="rm $ins_pkg_dir/etc/winallator.cfg.orig"; $counter++;
+    
+    $commands[$counter]="cp $ins_pkg_dir/etc/winallator.cfg $ins_pkg_dir/etc/winallator.cfg.orig"; $counter++;
+    $commands[$counter]="cat $ins_pkg_dir/etc/winallator.cfg.orig |sed 's,/var/orca/var,/var/orca,' > $ins_pkg_dir/etc/winallator.cfg"; $counter++;
+    $commands[$counter]="rm $ins_pkg_dir/etc/winallator.cfg.orig"; $counter++;
+    
+    $commands[$counter]="cp $ins_pkg_dir/bin/orca_services_running $ins_pkg_dir/bin/orca_services_running.orig"; $counter++;
+    $commands[$counter]="cat $ins_pkg_dir/bin/orca_services_running.orig |sed 's,$real_install_dir/orca/var,/var/orca,' > $ins_pkg_dir/bin/orca_services_running"; $counter++;
+    $commands[$counter]="rm $ins_pkg_dir/bin/orca_services_running.orig"; $counter++;
+    
+    $commands[$counter]="cp $ins_pkg_dir/bin/orcallator_running $ins_pkg_dir/bin/orcallator_running.orig"; $counter++;
+    $commands[$counter]="cat $ins_pkg_dir/bin/orcallator_running.orig |sed 's,$real_install_dir/orca/var/orcallator,/var/orca,' > $ins_pkg_dir/bin/orcallator_running"; $counter++;
+    $commands[$counter]="rm $ins_pkg_dir/bin/orcallator_running.orig"; $counter++;
+    
+    $commands[$counter]="cp $ins_pkg_dir/bin/start_orca_services $ins_pkg_dir/bin/start_orca_services.orig"; $counter++;
+    $commands[$counter]="cat $ins_pkg_dir/bin/start_orca_services.orig |sed 's,$real_install_dir/orca/var,/var/orca,' > $ins_pkg_dir/bin/start_orca_services"; $counter++;
+    $commands[$counter]="rm $ins_pkg_dir/bin/start_orca_services.orig"; $counter++;
+    
+    $commands[$counter]="cp $ins_pkg_dir/bin/start_orcallator $ins_pkg_dir/bin/start_orcallator.orig"; $counter++;
+    $commands[$counter]="cat $ins_pkg_dir/bin/start_orcallator.orig |sed 's,$real_install_dir/orca/var/orcallator,/var/orca,' > $ins_pkg_dir/bin/start_orcallator"; $counter++;
+    $commands[$counter]="rm $ins_pkg_dir/bin/start_orcallator.orig"; $counter++;
   }
   if (-e "$source_dir_name") {
     if ($option{'n'}=~/orca/) {
@@ -579,30 +642,49 @@ sub create_spool {
     print POSTINSTALL_FILE "mkdir -p /var/orca/rrd\n";
     print POSTINSTALL_FILE "mkdir -p /var/orca/html\n";
     print POSTINSTALL_FILE "mkdir -p /var/orca/`hostname`\n";
+    print POSTINSTALL_FILE "ln -s $real_install_dir/lib/SE/3.4 $real_install_dir/lib/SE/3.5.1\n";
     open PREREMOVE_FILE,">$preremove_file";
     system("mkdir -p $ins_pkg_dir/etc");
     if ($option{'r'}=~/10/) { 
-      # If on Solaris 10 create service manifest 
+      # If on Solaris 10 create client manifest 
       # and get postinstall script to install it
-      $init_file="$ins_pkg_dir/etc/orcallator.xml";
+      $init_file="$ins_pkg_dir/etc/orcallator-client.xml";
       open INIT_FILE,">$init_file";
       print INIT_FILE "<?xml version=\"1.0\"?>\n";
       print INIT_FILE "<!DOCTYPE service_bundle SYSTEM \"/usr/share/lib/xml/dtd/service_bundle.dtd.1\">\n";
-      print INIT_FILE "<service_bundle type='manifest' name='orcallator:default'>";
-      print INIT_FILE "<service name='application/orcallator' type='service' version='1'>\n";
+      print INIT_FILE "<service_bundle type='manifest' name='orcallator:client'>";
+      print INIT_FILE "<service name='application/orcallator/client' type='service' version='1'>\n";
       print INIT_FILE "<create_default_instance enabled='true' />\n";
       print INIT_FILE "<single_instance />";
       print INIT_FILE "<exec_method type='method' name='start'  exec='$real_install_dir/bin/start_orcallator' timeout_seconds=\"60\" />\n";
       print INIT_FILE "<exec_method type='method' name='stop'  exec='$real_install_dir/bin/stop_orcallator' timeout_seconds=\"60\" />\n";
       print INIT_FILE "</service>\n";
       print INIT_FILE "</service_bundle>\n";
-      
-      print POSTINSTALL_FILE "svccfg import $real_install_dir/etc/orcallator.xml\n";
-      print POSTINSTALL_FILE "svcadm enable application/orcallator\n";
+      close INIT_FILE;
+      # If on Solaris 10 create server manifest 
+      # and get postinstall script to install it
+      $init_file="$ins_pkg_dir/etc/orcallator-server.xml";
+      open INIT_FILE,">$init_file";
+      print INIT_FILE "<?xml version=\"1.0\"?>\n";
+      print INIT_FILE "<!DOCTYPE service_bundle SYSTEM \"/usr/share/lib/xml/dtd/service_bundle.dtd.1\">\n";
+      print INIT_FILE "<service_bundle type='manifest' name='orcallator:server'>";
+      print INIT_FILE "<service name='application/orcallator/server' type='service' version='1'>\n";
+      print INIT_FILE "<create_default_instance enabled='false' />\n";
+      print INIT_FILE "<single_instance />";
+      print INIT_FILE "<exec_method type='method' name='start'  exec='$real_install_dir/bin/orca -daemon -verbose $real_install_dir/etc/orcallator.cfg' timeout_seconds=\"60\" />\n";
+      print INIT_FILE "<exec_method type='method' name='stop'  exec='pkill -f $real_install_dir/bin/orca' timeout_seconds=\"60\" />\n";
+      print INIT_FILE "</service>\n";
+      print INIT_FILE "</service_bundle>\n";
+      print POSTINSTALL_FILE "svccfg import $real_install_dir/etc/orcallator-client.xml\n";
+      print POSTINSTALL_FILE "svccfg import $real_install_dir/etc/orcallator-server.xml\n";
+      print POSTINSTALL_FILE "svcadm enable svc:application/orcallator/client:default\n";
+      print POSTINSTALL_FILE "svcadm disable svc:application/orcallator/client:default\n";
       print PREREMOVE_FILE "#!/bin/sh\n";
-      print PREREMOVE_FILE "svcadm disable application/orcallator\n";
-      print PREREMOVE_FILE "svccfg delete -f application/orcallator\n";
-
+      print PREREMOVE_FILE "svcadm disable svc:application/orcallator/client:default\n";
+      print PREREMOVE_FILE "svcadm disable svc:application/orcallator/server:default\n";
+      print PREREMOVE_FILE "svccfg delete -f svc:application/orcallator/client:default\n";
+      print PREREMOVE_FILE "svccfg delete -f svc:application/orcallator/server:default\n";
+      close INIT_FILE;
     }
     else {
       # If not on Solaris 10 create standard init script 
@@ -613,10 +695,16 @@ sub create_spool {
       print INIT_FILE "\n";
       print INIT_FILE "case \"\$1\" in\n";
       print INIT_FILE "\tstart)\n";
+      print INIT_FILE "\t\t# Client:\n";
       print INIT_FILE "\t\t$real_install_dir/bin/start_orcallator\n";
+      print INIT_FILE "\t\t# Server:\n";
+      print INIT_FILE "\t\t# $real_install_dir/bin/orca -daemon -verbose $real_install_dir/etc/orcallator.cfg\n";
       print INIT_FILE "\t\t;;\n";
       print INIT_FILE "\tstop)\n";
+      print INIT_FILE "\t\t# Client:\n";
       print INIT_FILE "\t\t$real_install_dir/bin/stop_orcallator\n";
+      print INIT_FILE "\t\t# Server:\n";
+      print INIT_FILE "\t\t# pkill -f $real_install_dir/bin/orca\n";
       print INIT_FILE "\t\t;;\n";
       print INIT_FILE "\t*)\n";
       print INIT_FILE "\t\techo \"usage: \$0 {start|stop}\"\n";
@@ -640,8 +728,9 @@ sub create_spool {
       print PREREMOVE_FILE "rm /etc/rc1.d/K01orcallator\n";
       print PREREMOVE_FILE "rm /etc/rc2.d/S99orcallator\n";
       print PREREMOVE_FILE "rm /etc/rc3.d/S99orcallator\n";
+      close INIT_FILE;
     }
-    close INIT_FILE;
+    print PREREMOVE_FILE "rm $real_install_dir/lib/SE/3.5.1\n";
     close POSTINSTALL_FILE;
     close PREREMOVE_FILE;
     system("chmod 0755 $init_file");
