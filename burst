@@ -4,7 +4,7 @@ use Getopt::Std;
 use File::Basename;
 
 # Name:         burst (Build Unaided Rules Source Tool)
-# Version:      1.0.5
+# Version:      1.0.8
 # Release:      1
 # License:      Open Source
 # Group:        System
@@ -27,6 +27,12 @@ use File::Basename;
 #               Added postinstall and preremove scripts for setoolkit and orca
 #               1.0.5 Mon Jan 28 18:20:42 EST 2013
 #               Added server manifest for orcallator
+#               1.0.6 Tue 29 Jan 2013 21:32:41 EST
+#               Added support for wget and perl
+#               1.0.7 Wed Jan 30 08:15:38 EST 2013
+#               Added support for openssh and openssl
+#               1.0.8 Wed Jan 30 17:53:27 EST 2013
+#               Added code to download source and fixed openssl compilation
 
 # This script creates solaris packages from a source package or directory (TBD)
 # Source packages are fetched into a source directory, unpacked, compiled
@@ -46,7 +52,7 @@ use File::Basename;
 #
 # For example if given:
 # -n setoolkit -v 3.5.1
-# The script will look for setoolkit-3.5.1.[tar,tar.gz,tgz] in BASE/src
+# The script will look for setoolkit-3.5.1.[tar,tar.gz,tgz,bz2,etc] in BASE/src
 #
 # For example if given:
 # -s setoolkit-3.5.1.[tar,tar.gz,tgz]
@@ -165,6 +171,9 @@ sub check_env {
         }
       }
     }
+  }
+  if (!$option{'e'}) {
+    $option{'e'}=$maintainer_email;
   }
   if (!$option{'i'}) {
     # If real_install_dir not set at top of script, set it
@@ -317,8 +326,14 @@ sub check_env {
   if (!$option{'p'}) {
     $option{'p'}="$pkg_base_name$option{'n'}";
   }
-  if (length($option{'p'}) > 7) {
-    $option{'p'}=substr($option{'p'},0,7);
+  # Fix package name to it is something sensible
+  if ($option{'n'}=~/openssl|openssh/) {
+    $option{'p'}=~s/open//;
+  }
+  if ($option{'r'}=~/6|7|8|9/) {
+    if (length($option{'p'}) > 7) {
+      $option{'p'}=substr($option{'p'},0,7);
+    }
   }
   if ($option{'D'}) {
     print "Work dir:       $work_dir\n";
@@ -366,7 +381,32 @@ sub determine_source_file_name {
     }
   }
   print "Source file not found\n";
+  print "Attempting to fetch source\n";
+  get_source_file();
+  determine_source_file_name();
   return;
+}
+
+sub get_source_file {
+  
+  my @source_list; my $counter=0;
+  my $src_dir="$work_dir/src";
+  my $source_url;
+  
+  $source_list[$counter]="http://mirror.internode.on.net/pub/OpenBSD/OpenSSH/portable/openssh-6.1p1.tar.gz"; $counter++;
+  $source_list[$counter]="http://www.openssl.org/source/openssl-1.0.1c.tar.gz"; $counter++;
+  $source_list[$counter]="http://www.orcaware.com/orca/pub/snapshots/orca-snapshot-r557.tar.bz2"; $counter++;
+  $source_list[$counter]="http://downloads.sourceforge.net/project/setoolkit/SE%20Toolkit/SE%20Toolkit%203.5.1/setoolkit-3.5.1.tar.gz"; $counter++;
+  $source_list[$counter]="ftp://ftp.gnu.org/gnu/wget/wget-1.9.1.tar.gz"; $counter++;
+  $source_list[$counter]="http://www.cpan.org/src/5.0/perl-5.16.2.tar.gz"; $counter++;
+  #$source_list[$counter]=""; $counter++;
+  
+  foreach $source_url (@source_list) {
+    if ($source_url=~/$option{'n'}-$option{'v'}/) {
+      system("cd $src_dir ; wget $source_url");
+    }
+  }
+  
 }
 
 sub extract_source {
@@ -425,9 +465,21 @@ sub compile_source {
   # as much as possible
 
   determine_source_dir_name();
+  if ($option{'n'}=~/wget/) {
+    $commands[$counter]="CC=\"$cc_bin\" ; export CC ; ./configure --prefix=$real_install_dir --with-ssl=openssl"; $counter++;
+  }
+  if ($option{'n'}=~/openssl/) {
+    $commands[$counter]="CC=\"cc\" ; export CC ; ./Configure --prefix=$real_install_dir --openssldir=$real_install_dir zlib-dynamic threads shared solaris-x86-cc"; $counter++;
+  }
+  if ($option{'n'}=~/openssh/) {
+    $commands[$counter]="CC=\"$cc_bin\" ; export CC ; ./configure --prefix=$real_install_dir --with-zlib --with-solaris-contracts --with-solaris-projects --with-tcp-wrappers=$real_install_dir --with-ssl-dir=$real_install_dir --with-privsep-user=sshd --with-md5-passwords --with-xauth=/usr/openwin/bin/xauth --with-mantype=man --with-pid-dir=/var/run --with-pam --with-audit=bsm"; $counter++;
+  }
+  if ($option{'n'}=~/perl/) {
+    $commands[$counter]="CC=\"gcc\" ; export CC ; ./Configure -des -Dusethreads -Dcc=\"gcc -m32\" -Dprefix=$real_install_dir -Dusedttrace -Dusefaststdio -Duseshrplib -Dusevfork -Dless=less -Duse64bitall -Duse64bitint -Dpager=more"; $counter++;
+  }
   if ($option{'n'}=~/orca|setoolkit/) {
     if ($option{'n'}=~/orca/) {
-      $conf_string="--prefix=$real_install_dir --with-rrd-dir=/var/orca/rrd --with-html-dir=/var/orca/html --with-var-dir=/var/orca --build=$option{'a'}-sun-solaris2.$option{'r'} --radius_db=off";
+      $conf_string="--prefix=$real_install_dir --with-rrd-dir=/var/orca/rrd --with-html-dir=/var/orca/html --with-var-dir=/var/orca --build=$option{'a'}-sun-solaris2.$option{'r'}";
       $commands[$counter]="ORCA_CONFIGURE_COMMAND_LINE=\"$conf_string\" ; export ORCA_CONFIGURE_COMMAND_LINE ; PATH=\"\$PATH:/usr/ccs/bin\" ; export PATH ; CC=\"$cc_bin\" ; export CC ; ./configure $conf_string"; $counter++;
     }
     if ($option{'n'}=~/setoolkit/) {
@@ -440,7 +492,12 @@ sub compile_source {
   $commands[$counter]="make clean"; $counter++;
   $commands[$counter]="make all"; $counter++;
   $commands[$counter]="cd $ins_dir ; rm -rf *"; $counter++;
-  $commands[$counter]="make DESTDIR=$ins_dir install"; $counter++;
+  if ($option{'n'}=~/openssl/) {
+    $commands[$counter]="make INSTALL_PREFIX=$ins_dir install"; $counter++;
+  }
+  else {
+    $commands[$counter]="make DESTDIR=$ins_dir install"; $counter++;
+  }
   if ($option{'n'}=~/setoolkit/) {
     $commands[$counter]="cp $ins_pkg_dir/bin/se $ins_pkg_dir/bin/se.orig"; $counter++;
     $commands[$counter]="cat $ins_pkg_dir/bin/se.orig |sed 's,^ARCH.*,ARCH=\"\",' > $ins_pkg_dir/bin/se"; $counter++;
@@ -457,6 +514,11 @@ sub compile_source {
     $commands[$counter]="cp $ins_pkg_dir/bin/se $ins_pkg_dir/bin/se.orig"; $counter++;
     $commands[$counter]="cat $ins_pkg_dir/bin/se.orig |sed 's,SEINCLUDE=\"\$TOP\"/include.*,SEINCLUDE=\"\$TOP\"/include:$real_install_dir/lib/SE/$se_version,' > $ins_pkg_dir/bin/se"; $counter++;
     $commands[$counter]="rm $ins_pkg_dir/bin/se.orig"; $counter++;
+  }
+  if ($option{'n'}=~/openssh/){
+    $commands[$counter]="cp $ins_pkg_dir/etc/sshd_config $ins_pkg_dir/etc/sshd_config.orig"; $counter++;
+    $commands[$counter]="cat $ins_pkg_dir/etc/sshd_config.orig |sed 's,^#UsePAM no.*,UsePAM yes,' > $ins_pkg_dir/etc/sshd_config"; $counter++;
+    $commands[$counter]="rm $ins_pkg_dir/etc/sshd_config.orig"; $counter++;
   }
   if ($option{'n'}=~/orca/) {
     # If GNU tools are installed the configure script finds them
@@ -632,103 +694,130 @@ sub create_spool {
   }
   open PROTO_FILE,">$proto_file";
   print PROTO_FILE "i pkginfo=./pkginfo\n";
-  if ($option{'n'}=~/orca/) {
+  if ($option{'n'}=~/orca|openssh/) {
     # Add postinstall and preremove scripts to package
     print PROTO_FILE "i postinstall=./postinstall\n";
     print PROTO_FILE "i preremove=./preremove\n";
     open POSTINSTALL_FILE,">$postinstall_file";
-    # Create /var/* in postinstall
     print POSTINSTALL_FILE "#!/bin/sh\n";
-    print POSTINSTALL_FILE "mkdir -p /var/orca/rrd\n";
-    print POSTINSTALL_FILE "mkdir -p /var/orca/html\n";
-    print POSTINSTALL_FILE "mkdir -p /var/orca/`hostname`\n";
-    print POSTINSTALL_FILE "ln -s $real_install_dir/lib/SE/3.4 $real_install_dir/lib/SE/3.5.1\n";
+    print PREREMOVE_FILE "#!/bin/sh\n";
+    if ($option{'n'}=~/orca/) {
+      # Create /var/* in postinstall
+      print POSTINSTALL_FILE "mkdir -p /var/$option{'n'}/rrd\n";
+      print POSTINSTALL_FILE "mkdir -p /var/$option{'n'}/html\n";
+      print POSTINSTALL_FILE "mkdir -p /var/$option{'n'}/`hostname`\n";
+      print POSTINSTALL_FILE "ln -s $real_install_dir/lib/SE/3.4 $real_install_dir/lib/SE/3.5.1\n";
+      system("mkdir -p $ins_pkg_dir/etc");
+    }
     open PREREMOVE_FILE,">$preremove_file";
-    system("mkdir -p $ins_pkg_dir/etc");
     if ($option{'r'}=~/10/) { 
       # If on Solaris 10 create client manifest 
       # and get postinstall script to install it
-      $init_file="$ins_pkg_dir/etc/orcallator-client.xml";
-      open INIT_FILE,">$init_file";
-      print INIT_FILE "<?xml version=\"1.0\"?>\n";
-      print INIT_FILE "<!DOCTYPE service_bundle SYSTEM \"/usr/share/lib/xml/dtd/service_bundle.dtd.1\">\n";
-      print INIT_FILE "<service_bundle type='manifest' name='orcallator:client'>";
-      print INIT_FILE "<service name='application/orcallator/client' type='service' version='1'>\n";
-      print INIT_FILE "<create_default_instance enabled='true' />\n";
-      print INIT_FILE "<single_instance />";
-      print INIT_FILE "<exec_method type='method' name='start'  exec='$real_install_dir/bin/start_orcallator' timeout_seconds=\"60\" />\n";
-      print INIT_FILE "<exec_method type='method' name='stop'  exec='$real_install_dir/bin/stop_orcallator' timeout_seconds=\"60\" />\n";
-      print INIT_FILE "</service>\n";
-      print INIT_FILE "</service_bundle>\n";
-      close INIT_FILE;
+      if ($option{'n'}=~/orca/) {
+        $init_file="$ins_pkg_dir/etc/$option{'n'}-client.xml";
+        open INIT_FILE,">$init_file";
+        print INIT_FILE "<?xml version=\"1.0\"?>\n";
+        print INIT_FILE "<!DOCTYPE service_bundle SYSTEM \"/usr/share/lib/xml/dtd/service_bundle.dtd.1\">\n";
+        print INIT_FILE "<service_bundle type='manifest' name='$option{'n'}:client'>";
+        print INIT_FILE "<service name='application/$option{'n'}/client' type='service' version='1'>\n";
+        print INIT_FILE "<create_default_instance enabled='true' />\n";
+        print INIT_FILE "<single_instance />";
+        print INIT_FILE "<exec_method type='method' name='start'  exec='$real_install_dir/bin/start_orcallator' timeout_seconds=\"60\" />\n";
+        print INIT_FILE "<exec_method type='method' name='stop'  exec='$real_install_dir/bin/stop_orcallator' timeout_seconds=\"60\" />\n";
+        print INIT_FILE "</service>\n";
+        print INIT_FILE "</service_bundle>\n";
+        close INIT_FILE;
+      }
       # If on Solaris 10 create server manifest 
       # and get postinstall script to install it
-      $init_file="$ins_pkg_dir/etc/orcallator-server.xml";
-      open INIT_FILE,">$init_file";
-      print INIT_FILE "<?xml version=\"1.0\"?>\n";
-      print INIT_FILE "<!DOCTYPE service_bundle SYSTEM \"/usr/share/lib/xml/dtd/service_bundle.dtd.1\">\n";
-      print INIT_FILE "<service_bundle type='manifest' name='orcallator:server'>";
-      print INIT_FILE "<service name='application/orcallator/server' type='service' version='1'>\n";
-      print INIT_FILE "<create_default_instance enabled='false' />\n";
-      print INIT_FILE "<single_instance />";
-      print INIT_FILE "<exec_method type='method' name='start'  exec='$real_install_dir/bin/orca -daemon -verbose $real_install_dir/etc/orcallator.cfg' timeout_seconds=\"60\" />\n";
-      print INIT_FILE "<exec_method type='method' name='stop'  exec='pkill -f $real_install_dir/bin/orca' timeout_seconds=\"60\" />\n";
-      print INIT_FILE "</service>\n";
-      print INIT_FILE "</service_bundle>\n";
-      print POSTINSTALL_FILE "svccfg import $real_install_dir/etc/orcallator-client.xml\n";
-      print POSTINSTALL_FILE "svccfg import $real_install_dir/etc/orcallator-server.xml\n";
-      print POSTINSTALL_FILE "svcadm enable svc:application/orcallator/client:default\n";
-      print POSTINSTALL_FILE "svcadm disable svc:application/orcallator/client:default\n";
-      print PREREMOVE_FILE "#!/bin/sh\n";
-      print PREREMOVE_FILE "svcadm disable svc:application/orcallator/client:default\n";
-      print PREREMOVE_FILE "svcadm disable svc:application/orcallator/server:default\n";
-      print PREREMOVE_FILE "svccfg delete -f svc:application/orcallator/client:default\n";
-      print PREREMOVE_FILE "svccfg delete -f svc:application/orcallator/server:default\n";
-      close INIT_FILE;
+      if ($option{'n'}=~/orca|openssh/) {
+        $init_file="$ins_pkg_dir/etc/$option{'n'}-server.xml";
+        open INIT_FILE,">$init_file";
+        print INIT_FILE "<?xml version=\"1.0\"?>\n";
+        print INIT_FILE "<!DOCTYPE service_bundle SYSTEM \"/usr/share/lib/xml/dtd/service_bundle.dtd.1\">\n";
+        print INIT_FILE "<service_bundle type='manifest' name='$option{'n'}:server'>";
+        print INIT_FILE "<service name='application/$option{'n'}/server' type='service' version='1'>\n";
+        print INIT_FILE "<create_default_instance enabled='false' />\n";
+        print INIT_FILE "<single_instance />";
+        if ($option{'n'}=~/orca/) {
+          print INIT_FILE "<exec_method type='method' name='start'  exec='$real_install_dir/bin/orca -daemon -verbose $real_install_dir/etc/orcallator.cfg' timeout_seconds=\"60\" />\n";
+        }
+        if ($option{'n'}=~/openssh/) {
+          print INIT_FILE "<exec_method type='method' name='start'  exec='$real_install_dir/sbin/sshd' timeout_seconds=\"60\" />\n";
+        }
+        print INIT_FILE "<exec_method type='method' name='stop'  exec='pkill -f $real_install_dir/sbin/sshd' timeout_seconds=\"60\" />\n";
+        print INIT_FILE "</service>\n";
+        print INIT_FILE "</service_bundle>\n";
+        close INIT_FILE;
+      }
+      if ($option{'n'}=~/orca/) {
+        print POSTINSTALL_FILE "svccfg import $real_install_dir/etc/$option{'n'}-client.xml\n";
+        print POSTINSTALL_FILE "svcadm enable svc:application/$option{'n'}/client:default\n";
+        print PREREMOVE_FILE "svcadm disable svc:application/$option{'n'}/client:default\n";
+        print PREREMOVE_FILE "svccfg delete -f svc:application/$option{'n'}/client:default\n";
+      }
+      if ($option{'n'}=~/orca|openssh/) {
+        print POSTINSTALL_FILE "svccfg import $real_install_dir/etc/$option{'n'}-server.xml\n";
+        print POSTINSTALL_FILE "svcadm disable svc:application/$option{'n'}/server:default\n";
+        print PREREMOVE_FILE "svcadm disable svc:application/$option{'n'}/server:default\n";
+        print PREREMOVE_FILE "svccfg delete -f svc:application/$option{'n'}/server:default\n";
+      }
     }
     else {
       # If not on Solaris 10 create standard init script 
       # and get postinstall script to install it
-      $init_file="$ins_pkg_dir/etc/orcallator.init";
-      open INIT_FILE,">$init_file";
-      print INIT_FILE "#!/bin/sh\n";
-      print INIT_FILE "\n";
-      print INIT_FILE "case \"\$1\" in\n";
-      print INIT_FILE "\tstart)\n";
-      print INIT_FILE "\t\t# Client:\n";
-      print INIT_FILE "\t\t$real_install_dir/bin/start_orcallator\n";
-      print INIT_FILE "\t\t# Server:\n";
-      print INIT_FILE "\t\t# $real_install_dir/bin/orca -daemon -verbose $real_install_dir/etc/orcallator.cfg\n";
-      print INIT_FILE "\t\t;;\n";
-      print INIT_FILE "\tstop)\n";
-      print INIT_FILE "\t\t# Client:\n";
-      print INIT_FILE "\t\t$real_install_dir/bin/stop_orcallator\n";
-      print INIT_FILE "\t\t# Server:\n";
-      print INIT_FILE "\t\t# pkill -f $real_install_dir/bin/orca\n";
-      print INIT_FILE "\t\t;;\n";
-      print INIT_FILE "\t*)\n";
-      print INIT_FILE "\t\techo \"usage: \$0 {start|stop}\"\n";
-      print INIT_FILE "\t\texit 1\n";
-      print INIT_FILE "\t\t;;\n";
-      print INIT_FILE "esac\n";
-      print INIT_FILE "\n";
-      print INIT_FILE "exit 0\n";
-      print POSTINSTALL_FILE "cp $real_install_dir/etc/orcallator.init /etc/init.d/orcallator\n";
-      print POSTINSTALL_FILE "chmod 755 /etc/init.d/orcallator\n";
-      print POSTINSTALL_FILE "chown root:sys /etc/init.d/orcallator\n";
-      print POSTINSTALL_FILE "/etc/init.d/orcallator start\n";
-      print POSTINSTALL_FILE "ln -s /etc/init.d/orcallator /etc/rc0.d/K01orcallator\n";
-      print POSTINSTALL_FILE "ln -s /etc/init.d/orcallator /etc/rc1.d/K01orcallator\n";
-      print POSTINSTALL_FILE "ln -s /etc/init.d/orcallator /etc/rc2.d/S99orcallator\n";
-      print POSTINSTALL_FILE "ln -s /etc/init.d/orcallator /etc/rc3.d/S99orcallator\n";
-      print PREREMOVE_FILE "#!/bin/sh\n";
-      print PREREMOVE_FILE "/etc/init.d/orcallator stop\n";
-      print PREREMOVE_FILE "rm /etc/init.d/orcallator\n";
-      print PREREMOVE_FILE "rm /etc/rc0.d/K01orcallator\n";
-      print PREREMOVE_FILE "rm /etc/rc1.d/K01orcallator\n";
-      print PREREMOVE_FILE "rm /etc/rc2.d/S99orcallator\n";
-      print PREREMOVE_FILE "rm /etc/rc3.d/S99orcallator\n";
-      close INIT_FILE;
+      if ($option{'n'}=~/orca|openssh/) {
+        $init_file="$ins_pkg_dir/etc/$option{'n'}.init";
+        open INIT_FILE,">$init_file";
+        print INIT_FILE "#!/bin/sh\n";
+        print INIT_FILE "\n";
+        print INIT_FILE "case \"\$1\" in\n";
+        print INIT_FILE "\tstart)\n";
+        if ($option{'n'}=~/orca/) {
+          print INIT_FILE "\t\t# Client:\n";
+          print INIT_FILE "\t\t$real_install_dir/bin/start_orcallator\n";
+          print INIT_FILE "\t\t# Server:\n";
+          print INIT_FILE "\t\t# $real_install_dir/bin/orca -daemon -verbose $real_install_dir/etc/orcallator.cfg\n";
+        }
+        if ($option{'n'}=~/openssh/) {
+          print INIT_FILE "\t\t$real_install_dir/sbin/sshd\n";
+        }
+        print INIT_FILE "\t\t;;\n";
+        print INIT_FILE "\tstop)\n";
+        if ($option{'n'}=~/orca/) {
+          print INIT_FILE "\t\t# Client:\n";
+          print INIT_FILE "\t\t$real_install_dir/bin/stop_orcallator\n";
+          print INIT_FILE "\t\t# Server:\n";
+          print INIT_FILE "\t\t# pkill -f $real_install_dir/bin/orca\n";
+        }
+        if ($option{'n'}=~/openssh/) {
+          print INIT_FILE "\t\t# pkill -f $real_install_dir/sbin/sshd\n";
+        }
+        print INIT_FILE "\t\t;;\n";
+        print INIT_FILE "\t*)\n";
+        print INIT_FILE "\t\techo \"usage: \$0 {start|stop}\"\n";
+        print INIT_FILE "\t\texit 1\n";
+        print INIT_FILE "\t\t;;\n";
+        print INIT_FILE "esac\n";
+        print INIT_FILE "\n";
+        print INIT_FILE "exit 0\n";
+        print POSTINSTALL_FILE "cp $real_install_dir/etc/$option{'n'}.init /etc/init.d/$option{'n'}\n";
+        print POSTINSTALL_FILE "chmod 755 /etc/init.d/$option{'n'}\n";
+        print POSTINSTALL_FILE "chown root:sys /etc/init.d/$option{'n'}\n";
+        print POSTINSTALL_FILE "/etc/init.d/$option{'n'} start\n";
+        print POSTINSTALL_FILE "ln -s /etc/init.d/$option{'n'} /etc/rc0.d/K01$option{'n'}\n";
+        print POSTINSTALL_FILE "ln -s /etc/init.d/$option{'n'} /etc/rc1.d/K01$option{'n'}\n";
+        print POSTINSTALL_FILE "ln -s /etc/init.d/$option{'n'} /etc/rc2.d/S99$option{'n'}\n";
+        print POSTINSTALL_FILE "ln -s /etc/init.d/$option{'n'} /etc/rc3.d/S99$option{'n'}\n";
+        print PREREMOVE_FILE "#!/bin/sh\n";
+        print PREREMOVE_FILE "/etc/init.d/$option{'n'} stop\n";
+        print PREREMOVE_FILE "rm /etc/init.d/$option{'n'}\n";
+        print PREREMOVE_FILE "rm /etc/rc0.d/K01$option{'n'}\n";
+        print PREREMOVE_FILE "rm /etc/rc1.d/K01$option{'n'}\n";
+        print PREREMOVE_FILE "rm /etc/rc2.d/S99$option{'n'}\n";
+        print PREREMOVE_FILE "rm /etc/rc3.d/S99$option{'n'}\n";
+        close INIT_FILE;
+      }
     }
     print PREREMOVE_FILE "rm $real_install_dir/lib/SE/3.5.1\n";
     close POSTINSTALL_FILE;
