@@ -4,7 +4,7 @@ use Getopt::Std;
 use File::Basename;
 
 # Name:         burst (Build Unaided Rules Source Tool)
-# Version:      1.1.2
+# Version:      1.1.5
 # Release:      1
 # License:      Open Source
 # Group:        System
@@ -40,7 +40,13 @@ use File::Basename;
 #               1.1.1 Fri 22 Feb 2013 11:58:24 EST
 #               Initial Linux support
 #               1.1.2 Fri Feb 22 15:04:22 EST 2013
-#               Add support for john rpm
+#               Added support for john rpm
+#               1.1.3 Sat Feb 23 10:44:33 EST 2013
+#               Added support for bash syslog rpm
+#               1.1.4 Sat Feb 23 17:01:18 EST 2013
+#               Cleaned up debug mode code
+#               1.1.5 Sun Feb 24 14:03:28 EST 2013
+#               Fixed bash-syslog RPM creatch
 
 # This script creates solaris packages from a source package or directory (TBD)
 # Source packages are fetched into a source directory, unpacked, compiled
@@ -396,19 +402,12 @@ sub check_env {
       }
     }
   }
-  if ($option{'D'}) {
-    print LOG_FILE "\n";
-    print "Work dir:       $work_dir\n";
-    print LOG_FILE "Work dir:       $work_dir\n";
-    print "Source file:    $option{'s'}\n";
-    print LOG_FILE "Source file:    $option{'s'}\n";
-    print "Package name:   $option{'p'}\n";
-    print LOG_FILE "Package name:   $option{'p'}\n";
-    print "Source name:    $option{'n'}\n";
-    print LOG_FILE "Source name:    $option{'n'}\n";
-    print "Source version: $option{'v'}\n";
-    print LOG_FILE "Source version: $option{'v'}\n";
-  }
+  print_debug("","short");
+  print_debug("Work dir:       $work_dir","short");
+  print_debug("Source file:    $option{'s'}","short");
+  print_debug("Package name:   $option{'p'}","short");
+  print_debug("Source name:    $option{'n'}","short");
+  print_debug("Source version: $option{'v'}","short");
   if (!$option{'e'}) {
     if ($maintainer_email!~/[a-z]/) {
       $option{'e'}="";
@@ -492,10 +491,7 @@ sub get_source_file {
     if ($source_url=~/$package_name-$option{'v'}/) {
       $result=1;
       $command="cd $src_dir ; wget $source_url";
-      if ($option{'D'}) {
-        print LOG_FILE "\n";
-        print LOG_FILE "Executing $command\n";
-      }
+      print_debug("Executing: $command","long");
       system("$command");
     }
   }
@@ -507,34 +503,33 @@ sub get_source_file {
 
 sub extract_source {
 
-  my $file_type;
+  my $file_type; my $command;
   
   determine_source_dir_name();
-  system("rm -rf $source_dir_name");
   
+  $command="rm -rf $source_dir_name";
+  print_debug("Executing: $command","long");
+  system("$command");
   if (-e "$option{'s'}") {
     $file_type=`file $option{'s'}`;
     chomp($file_type);
-    if ($option{'D'}) {
-      print "Extracting $option{'s'} to $work_dir/src\n";
-      print LOG_FILE "\n";
-      print LOG_FILE "Extracting $option{'s'} to $work_dir/src\n";
-    }
     if ($file_type=~/USTAR tar archive/) {
-      system("cd $work_dir/src ; tar -xf $option{'s'}");
+      $command="cd $work_dir/src ; tar -xf $option{'s'}";
     }
     if ($file_type=~/gzip compressed data/) {
-      system("cd $work_dir/src ; gzcat $option{'s'} |tar -xf -");
+      $command="cd $work_dir/src ; gzcat $option{'s'} |tar -xf -";
     }
     if ($file_type=~/bzip2 compressed data/) {
-      system("cd $work_dir/src ; bzcat $option{'s'} |tar -xf -");
+      $command="cd $work_dir/src ; bzcat $option{'s'} |tar -xf -";
     }
+    system("$command");
+    print_debug("Executing: $command","long");
   }
   else {
     print "Source file $option{'s'} does not exist\n";
     exit;
   }
-
+  return;
 }
 
 sub determine_source_dir_name {
@@ -729,12 +724,9 @@ sub compile_source {
         system ("cd $source_dir_name ; $command");
       }
     }
+    print_debug("Executing: cd $source_dir_name","long");
     foreach $command (@commands) {
-      if ($option{'D'}) {
-        print "Executing: cd $source_dir_name ; $command\n";
-        print LOG_FILE "\n";
-        print LOG_FILE "Executing: cd $source_dir_name ; $command\n";
-      }
+      print_debug("Executing: $command","short");
       system ("cd $source_dir_name ; $command");
     }
   }
@@ -771,9 +763,8 @@ sub create_spool {
   my $header; my $init_file;
   my $postinstall_file="$ins_dir/postinstall";
   my $preremove_file="$ins_dir/preremove";
-  my @file_contents;
+  my @file_contents; my $script_name; my $command;
   my @script_names=('preinstall','postinstall','preremove','postremove','checkinstall');
-  my $script_name;
 
   # Reminder:
   # ins_dir = Root of work directory, eg /export/home/user/burst/ins
@@ -798,28 +789,17 @@ sub create_spool {
   chomp($date_string);
   $version_string="VERSION=\"$option{'v'},REV=$date_string\"";
   if ($option{'D'}) {
-    print LOG_FILE "\n";
-    print "pkginfo file contents:\n";
-    print LOG_FILE "pkginfo file contents:\n";
-    print "$pkg_string\n";
-    print LOG_FILE "$pkg_string\n";
-    print "$name_string\n";
-    print LOG_FILE "$name_string\n";
-    print "$arch_string\n";
-    print LOG_FILE "$arch_string\n";
-    print "$version_string\n";
-    print LOG_FILE "$version_string\n";
-    print "$vendor_string\n";
-    print LOG_FILE "$category_string\n";
-    print "$category_string\n";
-    print LOG_FILE "$email_string\n";
-    print "$email_string\n";
-    print LOG_FILE "$pstamp_string\n";
-    print "$pstamp_string\n";
-    print LOG_FILE "$basedir_string\n";
-    print "$basedir_string\n";
-    print LOG_FILE "$classes_string\n";
-    print "$classes_string\n";
+    print_debug("pkginfo file contents:","long");
+    print_debug("$pkg_string","short");
+    print_debug("$name_string","short");
+    print_debug("$arch_string","short");
+    print_debug("$version_string","short");
+    print_debug("$vendor_string","short");
+    print_debug("$category_string","short");
+    print_debug("$email_string","short");
+    print_debug("$pstamp_string","short");
+    print_debug("$basedir_string","short");
+    print_debug("$classes_string","short");
   }
   open PROTO_FILE,">$proto_file";
   print PROTO_FILE "i pkginfo=./pkginfo\n";
@@ -1033,29 +1013,26 @@ sub create_spool {
     if ( -e "$preremove_file") {
       system("chmod 0755 $preremove_file");
     }
-    if ($option{'D'}) {
-      if ($option{'n'}=~/orca|openssh/) {
-        print LOG_FILE "\n";
-        print LOG_FILE "Contents of $init_file:\n";
-        @file_contents=`cat $init_file`;
-        print LOG_FILE " @file_contents";
-      }
-      if ( -e "$postinstall_file") {
-        print LOG_FILE "\n";
-        print LOG_FILE "Contents of $postinstall_file:\n";
-        @file_contents=`cat $postinstall_file`;
-        print LOG_FILE " @file_contents";
-      }
-      if ( -e "$preremove_file") {
-        print LOG_FILE "\n";
-        print LOG_FILE "Contents of $preremove_file:\n";
-        @file_contents=`cat $preremove_file`;
-        print LOG_FILE " @file_contents";
-      }
+    if ($option{'n'}=~/orca|openssh/) {
+      print_debug("Contents of $init_file:","long");
+      @file_contents=`cat $init_file`;
+      print_debug(" @file_contents","short");
+    }
+    if ( -e "$postinstall_file") {
+      print_debug("Contents of $postinstall_file:","long");
+      @file_contents=`cat $postinstall_file`;
+      print_debug(" @file_contents","short");
+    }
+    if ( -e "$preremove_file") {
+      print_debug("Contents of $preremove_file:","long");
+      @file_contents=`cat $preremove_file`;
+      print_debug(" @file_contents","short");
     }
   }
   close PROTO_FILE;
-  system("cd $ins_dir ; find . -print |grep -v './pkginfo' |grep -v './prototype' |grep -v './postinstall' |grep -v './preremove' |grep -v './preinstall' |grep -v './postremove' |grep -v './checkinstall' |pkgproto | sed 's/$user_name $group_name/root bin/g' |sed 's/d none opt 0755 root bin/d none opt 0755 root sys/g' >> $proto_file");
+  $command="cd $ins_dir ; find . -print |grep -v './pkginfo' |grep -v './prototype' |grep -v './postinstall' |grep -v './preremove' |grep -v './preinstall' |grep -v './postremove' |grep -v './checkinstall' |pkgproto | sed 's/$user_name $group_name/root bin/g' |sed 's/d none opt 0755 root bin/d none opt 0755 root sys/g' >> $proto_file";
+  print_debug("Executing: $command","long");
+  system("$command");
   open INFO_FILE,">$info_file";
   print INFO_FILE "$pkg_string\n";
   print INFO_FILE "$name_string\n";
@@ -1078,22 +1055,18 @@ sub create_trans {
   my $trans_dir="$work_dir/trans";
   my $spool_dir="$work_dir/spool";
   my $proto_file="$ins_dir/prototype";
-  my @prototype;
+  my @prototype; my $command;
 
   if ((-e "$trans_dir")&&($trans_dir=~/[A-z]/)) {
     print "Cleaning up $trans_dir...\n";
     system("cd $trans_dir ; rm -rf *");
   }
-  if ($option{'D'}) {
-    print "Executing: cd $ins_dir ; pkgmk -o -r . -d $spool_dir -f $proto_file\n";
-    @prototype=`cat $proto_file`;
-    print LOG_FILE "\n";
-    print LOG_FILE "prototype file contents:\n";
-    print LOG_FILE " @prototype";
-    print LOG_FILE "\n";
-    print LOG_FILE "Executing: cd $ins_dir ; pkgmk -o -r . -d $spool_dir -f $proto_file\n";
-  }
-  system("cd $ins_dir ; pkgmk -o -r . -d $spool_dir -f $proto_file");
+  $command="cd $ins_dir ; pkgmk -o -r . -d $spool_dir -f $proto_file";
+  print_debug("prototype file contents:","long");
+  @prototype=`cat $proto_file`;
+  print_debug(" @prototype","long");
+  print_debug("Executing: $command","long");
+  system("$command");
   return;
 }
 
@@ -1105,13 +1078,11 @@ sub create_pkg {
   my $trans_dir="$work_dir/trans";
   my $pkg_dir="$work_dir/pkg";
   my $pkg_string="$option{'p'}";
+  my $command;
 
-  if ($option{'D'}) {
-    print "Executing: cd $spool_dir ; pkgtrans $spool_dir $pkg_dir/$pkg_string-sol$option{'r'}-$option{'a'}.pkg $pkg_string\n";
-    print LOG_FILE "\n";
-    print LOG_FILE "Executing: cd $spool_dir ; pkgtrans $spool_dir $pkg_dir/$pkg_string-sol$option{'r'}-$option{'a'}.pkg $pkg_string\n";
-  }
-  system("cd $spool_dir ; pkgtrans $spool_dir $pkg_dir/$pkg_string-$option{'a'}-$option{'r'}.pkg $pkg_string");
+  $command="cd $spool_dir ; pkgtrans $spool_dir $pkg_dir/$pkg_string-$option{'a'}-$option{'r'}.pkg $pkg_string";
+  print_debug("Executing: $command","long");
+  system("$command");
   return;
 }
 
@@ -1119,13 +1090,11 @@ sub create_spec {
   my $spec_dir="$work_dir/SPECS";
   my $spec_file="$spec_dir/$option{'p'}.spec";
   my $arch_string=$os_arch;
+  my @file_contents;
   
-  if ($option{'D'}) {
-    print LOG_FILE "\n";
-    print LOG_FILE "Creating: $spec_file";
-  }
+  print_debug("Creating: $spec_file","long");
   open SPEC_FILE,">$spec_file";
-  print SPEC_FILE "Version:\t\t\t$option{'v'}\n";
+  print SPEC_FILE "Version:\t\t\t\t$option{'v'}\n";
   print SPEC_FILE "Name:\t\t\t\t\t$option{'n'}\n";
   if ($option{'n'}=~/john/) {
     $option{'d'}="John the Ripper is a fast password cracker";
@@ -1133,30 +1102,40 @@ sub create_spec {
   if ($option{'n'}=~/bsl/) {
     $option{'d'}="Bash compiled with syslog support";
   }
-  print SPEC_FILE "Summary:\t\t\t$option{'d'}\n";
-  print SPEC_FILE "Release:\t\t\t1\n";
-  print SPEC_FILE "Group:\t\t\t\t$option{'c'}\n";
+  print SPEC_FILE "Summary:\t\t\t\t$option{'d'}\n";
+  print SPEC_FILE "Release:\t\t\t\t1\n";
+  print SPEC_FILE "Group:\t\t\t\t\t$option{'c'}\n";
   print SPEC_FILE "Vendor:\t\t\t\t$vendor_string\n";
   print SPEC_FILE "Distribution:\t$pkg_base_name\n";
-  print SPEC_FILE "License:\t\t\t$option{'l'}\n";
+  print SPEC_FILE "License:\t\t\t\t$option{'l'}\n";
   if ($option{'n'}=~/john/) {
     $option{'u'}="http://www.openwall.com/john/";
     $option{'f'}="http://www.openwall.com/john/g/john-$option{'v'}.tar.gz"
   }
-  print SPEC_FILE "URL:\t\t\t\t\t$option{'u'}\n";
-  print SPEC_FILE "Source0:\t\t\t$option{'f'}\n";
   if ($option{'n'}=~/bsl/) {
-    print SPEC_FILE "Patch1:\t\t\thttps://raw.github.com/richardatlateralblast/bash-4.2-bashhist.c.patch/master/bash-4.2-bashhist.c.patch\n";
+    $option{'u'}="http://www.gnu.org/software/bash/";
+    $option{'f'}="http://ftp.gnu.org/gnu/bash/bash-$option{'v'}.tar.gz"
   }
-  print SPEC_FILE "BuildRoot:\t\t%{_tmppath}/%{name}-%{version}-%{release}\n";
+  print SPEC_FILE "URL:\t\t\t\t\t\t$option{'u'}\n";
+  print SPEC_FILE "Source0:\t\t\t\t$option{'f'}\n";
+  if ($option{'n'}=~/bsl/) {
+    print SPEC_FILE "Source1:\t\t\t\thttps://raw.github.com/richardatlateralblast/bsl.postinstall/master/bsl.postinstall\n";
+    print SPEC_FILE "Source2:\t\t\t\thttps://raw.github.com/richardatlateralblast/bsl.preremove/master/bsl.preremove\n";
+  }
+  if ($option{'n'}=~/bsl/) {
+    print SPEC_FILE "Patch1:\t\t\t\thttps://raw.github.com/richardatlateralblast/bash-4.2-bashhist.c.patch/master/bash-4.2-bashhist.c.patch\n";
+  }
+  print SPEC_FILE "BuildRoot:\t\t\t%{_tmppath}/%{name}-%{version}-%{release}\n";
   print SPEC_FILE "\n";
   print SPEC_FILE "%description\n";
   print SPEC_FILE "$option{'d'}\n";
   print SPEC_FILE "\n";
   print SPEC_FILE "%prep\n";
-  print SPEC_FILE "%setup -q -n %{name}-%{version}\n";
   if ($option{'n'}=~/bsl/) {
-    print SPEC_FILE "%patch1\n";
+    print SPEC_FILE "%setup -q -n bash-%{version}\n";
+  }
+  else {
+    print SPEC_FILE "%setup -q -n %{name}-%{version}\n";
   }
   print SPEC_FILE "\n";
   print SPEC_FILE "%build\n";
@@ -1165,6 +1144,7 @@ sub create_spec {
     print SPEC_FILE "cd src ; make linux-$arch_string\n";
   }
   if ($option{'n'}=~/bsl/) {
+    print SPEC_FILE "patch -p0 < %{_topdir}/SOURCES/bash-%{version}-bashhist.c.patch\n";
     print SPEC_FILE "./configure --prefix=/opt/%{distribution}\n";
     print SPEC_FILE "sed -i 's,/\* #define SYSLOG_HISTORY \*/,#define SYSLOG_HISTORY,' config-top.h\n";
     print SPEC_FILE "make all\n";
@@ -1174,11 +1154,11 @@ sub create_spec {
   print SPEC_FILE "[ \"%{buildroot}\" != / ] && rm -rf \"%{buildroot}\"\n";
   if ($option{'n'}=~/bsl/) {
     print SPEC_FILE "make DESTDIR=%{buildroot} install\n";
-    print SPEC_FILE "mkdir %{buildroot}/opt/%{distribution}/etc\n";
-    print SPEC_FILE "cp %{_topdir}/SOURCES/postinstall %{buildroot}/ opt/%{distribution}/etc\n";
-    print SPEC_FILE "cp %{_topdir}/SOURCES/preremove %{buildroot}/ opt/%{distributions}/etc\n";
-    print SPEC_FILE "chmod +x %{buildroot}/ opt/%{distribution}/etc/postinstall\n";
-    print SPEC_FILE "chmod +x %{buildroot}/ opt/%{distribution}/etc/preremove\n";
+    print SPEC_FILE "mkdir -p %{buildroot}/opt/%{distribution}/etc\n";
+    print SPEC_FILE "cp %{_topdir}/SOURCES/$option{'n'}.postinstall %{buildroot}/opt/%{distribution}/etc\n";
+    print SPEC_FILE "cp %{_topdir}/SOURCES/$option{'n'}.preremove %{buildroot}/opt/%{distribution}/etc\n";
+    print SPEC_FILE "chmod +x %{buildroot}/opt/%{distribution}/etc/$option{'n'}.postinstall\n";
+    print SPEC_FILE "chmod +x %{buildroot}/opt/%{distribution}/etc/$option{'n'}.preremove\n";
   }
   if ($option{'n'}=~/john/) {
     print SPEC_FILE "mkdir -p %{buildroot}/opt/%{distribution}/bin\n";
@@ -1191,8 +1171,8 @@ sub create_spec {
   print SPEC_FILE "\n";
   if ($option{'n'}=~/bsl/) {
     print SPEC_FILE "%post\n";
-    print SPEC_FILE "/opt/%{distribution}/etc/postinstall\n";
-    print SPEC_FILE "/opt/%{distribution}/etc/preremove\n";
+    print SPEC_FILE "/opt/%{distribution}/etc/$option{'n'}.postinstall\n";
+    print SPEC_FILE "/opt/%{distribution}/etc/$option{'n'}preremove\n";
   }
   if ($option{'n'}=~/bsl/) {
     print SPEC_FILE "%preun\n";
@@ -1201,12 +1181,34 @@ sub create_spec {
   }
   print SPEC_FILE "%changelog\n";
   print SPEC_FILE "\n";
-  if ($option{'D'}) {
-    print LOG_FILE "\n";
-    print LOG_FILE "Contents of $spec_file";
-    print LOG_FILE "\n";
-  }
+  print_debug("Contents of $spec_file","long");
+  @file_contents=`cat $spec_file`;
+  print_debug(" @file_contents","long");
   close SPEC_FILE;
+  return;
+  
+}
+
+sub print_debug {
+  
+  my $string=$_[0];
+  my $style=$_[1];
+  
+  if ($option{'D'}) {
+    if ($style!~/[A-z]/) {
+      $style="normal";
+    }
+    if ($style=~/short|normal/) {
+      print "$string\n";
+      print LOG_FILE "$string\n";
+    }
+    else {
+      print "\n";
+      print "$string\n";
+      print "\n";
+    }
+  }
+  return;
   
 }
 
@@ -1216,12 +1218,8 @@ sub create_rpm {
   my $spec_file="$spec_dir/$option{'p'}.spec";
   my $command="rpmbuild -ba --define \"_topdir $work_dir\" $spec_file";
   
-  if ($option{'D'}) {
-    print LOG_FILE "\n";
-    print LOG_FILE "Executing: $command";
-    print LOG_FILE "\n";
-  }
+  print_debug("Executing: $command","long");
   system("$command");
-
+  return;
   
 }
