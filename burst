@@ -4,7 +4,7 @@ use Getopt::Std;
 use File::Basename;
 
 # Name:         burst (Build Unaided Rules Source Tool)
-# Version:      1.1.5
+# Version:      1.2.2
 # Release:      1
 # License:      Open Source
 # Group:        System
@@ -47,6 +47,20 @@ use File::Basename;
 #               Cleaned up debug mode code
 #               1.1.5 Sun Feb 24 14:03:28 EST 2013
 #               Fixed bash-syslog RPM creatch
+#               1.1.6 Tuesday,  5 March 2013  7:59:10 PM EST
+#               Added GNU patch
+#               1.1.7 Tuesday,  5 March 2013  8:54:22 PM EST
+#               Added additional version detection code
+#               1.1.8 Tuesday,  5 March 2013 10:50:02 PM EST
+#               Added zlib
+#               1.1.9 Tuesday,  5 March 2013 11:04:24 PM EST
+#               Updated OpenSSL to 1.0.1e
+#               1.2.0 Wednesday,  6 March 2013 12:07:31 AM EST
+#               Fixed OpenSSH
+#               1.2.1 Wednesday,  6 March 2013 12:20:27 AM EST
+#               Fixed Configure flag
+#               1.2.2 Wednesday,  6 March 2013 12:55:23 AM EST
+#               Added HPN ssh support
 
 # This script creates solaris packages from a source package or directory (TBD)
 # Source packages are fetched into a source directory, unpacked, compiled
@@ -96,6 +110,8 @@ use File::Basename;
 # handling, eg post handling of the Makefile
 #
 
+# If you want HPN patch applied set this variable to 1
+my $hpnssh=1;
 
 my $script_name="burst";
 my %option=();
@@ -207,6 +223,7 @@ sub check_env {
   my $home_dir=`echo \$HOME`;
   my @dir_names;
   my $dir_name;
+  my $lc_pkg_base_name=lc($pkg_base_name);
 
   chomp($cc_bin);
   chomp($home_dir);
@@ -241,7 +258,7 @@ sub check_env {
   if (!$option{'i'}) {
     # If real_install_dir not set at top of script, set it
     if ($real_install_dir!~/[a-z]/) {
-      $real_install_dir="$top_install_dir/$pkg_base_name";
+      $real_install_dir="$top_install_dir/$lc_pkg_base_name";
     }
   }
   else {
@@ -256,7 +273,7 @@ sub check_env {
   }
   if (!$option{'r'}) {
     # If the OS version is not specified, get it
-    if ($os_name=~/SunOs/) {
+    if ($os_name=~/SunOS/) {
       $option{'r'}=`uname -r |cut -f2 -d"."`;
     }
     if ($os_name=~/Linux/) {
@@ -279,13 +296,23 @@ sub check_env {
   else {
     $pkg_base_name=$option{'b'};
   }
+  if (!$option{'i'}) {
+    # If real_install_dir not set at top of script, set it
+    if ($real_install_dir!~/[a-z]/) {
+      $real_install_dir="$top_install_dir/$lc_pkg_base_name";
+    }
+  }
+  else {
+    # if -i used, set real_install_dir from command line
+    $real_install_dir=$option{'i'};
+  }
   print "Setting package base name to $pkg_base_name\n";
   if (!$option{'w'}) {
     if ($work_dir!~/[a-z]/) {
       # If the work directory has not been given via -w
       # and has not been set at the top of the script
       # set it to tmp under the users home directory
-      if (($os_name=~/SunOS/)&&(! -d "/root")) {
+      if ($os_name=~/SunOS/) {
         $user_name=`/usr/xpg4/bin/who am i |awk '{print \$1}'`;
         chomp($user_name);
         if ($user_name=~/root/) {
@@ -293,11 +320,13 @@ sub check_env {
           # It's not recommended to run this as root
           $work_dir="/tmp/$script_name";
         }
+        else {
+          if ($os_name=~/SunOS/) {
+            $work_dir="$home_dir/$script_name";
+          }
+        }
       }
       else {
-        if ($os_name=~/SunOS/) {
-          $work_dir="$home_dir/$script_name";
-        }
         if ($os_name=~/Linux/) {
           $work_dir="$home_dir/rpmbuild"
         }
@@ -316,6 +345,9 @@ sub check_env {
     }
   }
   if (!$option{'s'}) {
+    if (($option{'n'})&&(!$option{'v'})) {
+      get_source_version();
+    }
     if ((!$option{'n'})||(!$option{'v'})) {
       # If the source file, version and name have not been given 
       # exit as there is not enough information to continue
@@ -460,11 +492,52 @@ sub determine_source_file_name {
   return;
 }
 
+sub populate_source_list {
+  
+  my @source_list; my $counter=0;
+  my $package_name=$option{'n'};
+
+  if ($package_name=~/bsl/) {
+    $package_name="bash";
+  }
+  $source_list[$counter]="http://mirror.internode.on.net/pub/OpenBSD/OpenSSH/portable/openssh-6.1p1.tar.gz"; $counter++;
+  $source_list[$counter]="http://www.openssl.org/source/openssl-1.0.1e.tar.gz"; $counter++;
+  $source_list[$counter]="http://www.orcaware.com/orca/pub/snapshots/orca-snapshot-r557.tar.bz2"; $counter++;
+  $source_list[$counter]="http://downloads.sourceforge.net/project/setoolkit/SE%20Toolkit/SE%20Toolkit%203.5.1/setoolkit-3.5.1.tar.gz"; $counter++;
+  $source_list[$counter]="ftp://ftp.gnu.org/gnu/wget/wget-1.9.1.tar.gz"; $counter++;
+  $source_list[$counter]="http://www.cpan.org/src/5.0/perl-5.16.2.tar.gz"; $counter++;
+  $source_list[$counter]="ftp://ftp.gnu.org/gnu/bash/bash-4.2.tar.gz"; $counter++;
+  $source_list[$counter]="http://www.openwall.com/john/g/john-1.7.9.tar.gz"; $counter++;
+  $source_list[$counter]="http://ftp.gnu.org/gnu/patch/patch-2.7.1.tar.gz"; $counter++;
+  $source_list[$counter]="http://ftp.gnu.org/gnu/diffutils/diffutils-3.2.tar.gz"; $counter++;
+  $source_list[$counter]="http://zlib.net/zlib-1.2.7.tar.gz"; $counter++;
+  #$source_list[$counter]=""; $counter++;
+
+  return @source_list;
+}
+
+sub get_source_version {
+  
+  my @source_list; my $counter=0;
+  my $source_url; my $header;
+  
+  @source_list=populate_source_list();
+  foreach $source_url (@source_list) {
+    if ($source_url=~/$option{'n'}/) {
+      ($header,$option{'v'})=split("$option{'n'}-",$source_url);
+      $option{'v'}=~s/\.tar\.gz//g;
+      $option{'v'}=~s/\.tar\.bz2//g;
+      print "Setting package version to $option{'v'}\n";
+      return;
+    }
+  }
+  return;
+}
+
 sub get_source_file {
   
   my @source_list; my $counter=0;
   my $source_url; my $result=0;
-  my $package_name=$option{'n'};
   my $command; my $src_dir;
   
   if ($os_name=~/SunOS/) {
@@ -472,23 +545,10 @@ sub get_source_file {
   }
   if ($os_name=~/Linux/) {
     $src_dir="$work_dir/SOURCES"
-  }
-  
-  if ($package_name=~/bsl/) {
-    $package_name="bash";
-  }
-  $source_list[$counter]="http://mirror.internode.on.net/pub/OpenBSD/OpenSSH/portable/openssh-6.1p1.tar.gz"; $counter++;
-  $source_list[$counter]="http://www.openssl.org/source/openssl-1.0.1c.tar.gz"; $counter++;
-  $source_list[$counter]="http://www.orcaware.com/orca/pub/snapshots/orca-snapshot-r557.tar.bz2"; $counter++;
-  $source_list[$counter]="http://downloads.sourceforge.net/project/setoolkit/SE%20Toolkit/SE%20Toolkit%203.5.1/setoolkit-3.5.1.tar.gz"; $counter++;
-  $source_list[$counter]="ftp://ftp.gnu.org/gnu/wget/wget-1.9.1.tar.gz"; $counter++;
-  $source_list[$counter]="http://www.cpan.org/src/5.0/perl-5.16.2.tar.gz"; $counter++;
-  $source_list[$counter]="ftp://ftp.gnu.org/gnu/bash/bash-4.2.tar.gz"; $counter++;
-  $source_list[$counter]="http://www.openwall.com/john/g/john-1.7.9.tar.gz"; $counter++;
-  #$source_list[$counter]=""; $counter++;
-  
+  } 
+  @source_list=populate_source_list();
   foreach $source_url (@source_list) {
-    if ($source_url=~/$package_name-$option{'v'}/) {
+    if ($source_url=~/$option{'n'}-$option{'v'}/) {
       $result=1;
       $command="cd $src_dir ; wget $source_url";
       print_debug("Executing: $command","long");
@@ -547,9 +607,11 @@ sub compile_source {
 
   my @commands; my $command;
   my $ins_dir="$work_dir/ins";
+  my $src_dir="$work_dir/src";
   my $conf_string; my $counter=0;
   my @files; my $file; my $se_version;
   my $ins_pkg_dir="$ins_dir$real_install_dir";
+  my $patch_file; my $config_flag=0;
   
   # Reminder:
   # ins_dir = Root of work directory, eg /export/home/user/burst/ins
@@ -567,11 +629,36 @@ sub compile_source {
   if ($option{'n'}=~/openssl/) {
     $commands[$counter]="CC=\"cc\" ; export CC ; ./Configure --prefix=$real_install_dir --openssldir=$real_install_dir zlib-dynamic threads shared solaris-x86-cc"; $counter++;
   }
+  if ($option{'n'}=~/zlib/) {
+    $commands[$counter]="./configure --prefix=$real_install_dir --enable-shared"; $counter++;
+  }
   if ($option{'n'}=~/openssh/) {
-    $commands[$counter]="CC=\"$cc_bin\" ; export CC ; ./configure --prefix=$real_install_dir --with-zlib --with-solaris-contracts --with-solaris-projects --with-tcp-wrappers=$real_install_dir --with-ssl-dir=$real_install_dir --with-privsep-user=sshd --with-md5-passwords --with-xauth=/usr/openwin/bin/xauth --with-mantype=man --with-pid-dir=/var/run --with-pam --with-audit=bsm"; $counter++;
+    if ($hpnssh eq 1) {
+      $patch_file="$src_dir/openssh-6.1p1-hpn13v14.diff";
+      if (! -e "$patch_file") {
+        if (-e "$patch_file.gz") {
+          system("cd $src_dir ; gzip -d $patch_file.gz");
+        }
+      }
+      if ( -e "$patch_file") {
+        $commands[$counter]="gpatch < $patch_file"; $counter++;
+      }
+      else {
+        print "Download HPN patch and put it in $src_dir\n";
+        exit;
+      }
+    }
+    if ($option{'r'}!~/9|10|11/) {
+      $commands[$counter]="CFLAGS=\"\$CFLAGS -I$real_install_dir/include\" ; export CFLAGS ; CC=cc ; export CC ; ./configure --prefix=$real_install_dir --with-zlib --with-solaris-contracts --with-solaris-projects --with-tcp-wrappers=$real_install_dir --with-ssl-dir=$real_install_dir --with-privsep-user=sshd --with-md5-passwords --with-xauth=/usr/openwin/bin/xauth --with-mantype=man --with-pid-dir=/var/run --with-pam --with-audit=bsm --enable-shared"; $counter++;
+    }
+    else {
+      $commands[$counter]="CFLAGS=\"\$CFLAGS -I$real_install_dir/include -I/usr/sfw/include\" ; export CFLAGS ; CC=cc ; export CC ; ./configure --prefix=$real_install_dir --with-zlib --with-solaris-contracts --with-solaris-projects --with-tcp-wrappers=/usr/sfw --with-ssl-dir=$real_install_dir --with-privsep-user=sshd --with-md5-passwords --with-xauth=/usr/openwin/bin/xauth --with-mantype=man --with-pid-dir=/var/run --with-pam --with-audit=bsm --enable-shared"; $counter++;
+    }
+    $config_flag=1;
   }
   if ($option{'n'}=~/perl/) {
     $commands[$counter]="CC=\"gcc\" ; export CC ; ./Configure -des -Dusethreads -Dcc=\"gcc -m32\" -Dprefix=$real_install_dir -Dusedttrace -Dusefaststdio -Duseshrplib -Dusevfork -Dless=less -Duse64bitall -Duse64bitint -Dpager=more"; $counter++;
+    $config_flag=1;
   }
   if ($option{'n'}=~/orca|setoolkit/) {
     if ($option{'n'}=~/orca/) {
@@ -581,8 +668,9 @@ sub compile_source {
     if ($option{'n'}=~/setoolkit/) {
       $commands[$counter]="CC=\"$cc_bin\" ; export CC ; ./configure --prefix=$real_install_dir --with-se-include-dir=$real_install_dir/include --with-se-examples-dir=$real_install_dir/examples"; $counter++;
     }
+    $config_flag=1;
   }
-  else {
+  if ($config_flag eq 0) {
     $commands[$counter]="CC=\"$cc_bin\" ; export CC ; ./configure --prefix=$real_install_dir"; $counter++;
   }
   if ($option{'n'}=~/bsl/) {
@@ -1078,9 +1166,16 @@ sub create_pkg {
   my $trans_dir="$work_dir/trans";
   my $pkg_dir="$work_dir/pkg";
   my $pkg_string="$option{'p'}";
-  my $command;
-
-  $command="cd $spool_dir ; pkgtrans $spool_dir $pkg_dir/$pkg_string-$option{'a'}-$option{'r'}.pkg $pkg_string";
+  my $hpn_string=$pkg_string;
+  my $command; 
+  
+  if ($hpnssh eq 1) {
+    $hpn_string=~s/ssh/hpnssh/g;
+    $command="cd $spool_dir ; pkgtrans $spool_dir $pkg_dir/$hpn_string-$option{'v'}-$option{'a'}-sol$option{'r'}.pkg $pkg_string";
+  }
+  else {
+    $command="cd $spool_dir ; pkgtrans $spool_dir $pkg_dir/$pkg_string-$option{'v'}-$option{'a'}-sol$option{'r'}.pkg $pkg_string";
+  }
   print_debug("Executing: $command","long");
   system("$command");
   return;
