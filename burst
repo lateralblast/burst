@@ -4,7 +4,7 @@ use Getopt::Std;
 use File::Basename;
 
 # Name:         burst (Build Unaided Rules Source Tool)
-# Version:      1.2.2
+# Version:      1.2.8
 # Release:      1
 # License:      Open Source
 # Group:        System
@@ -61,6 +61,18 @@ use File::Basename;
 #               Fixed Configure flag
 #               1.2.2 Wednesday,  6 March 2013 12:55:23 AM EST
 #               Added HPN ssh support
+#               1.2.3 Wed  6 Mar 2013 16:11:45 EST
+#               Updated wget
+#               1.2.4 Wed  6 Mar 2013 16:30:27 EST
+#               Replaced tar with gtar to fix checksum errors
+#               1.2.5 Wed  6 Mar 2013 17:53:30 EST
+#               Fixed id resolution
+#               1.2.6 Thu  7 Mar 2013 08:55:33 EST
+#               Improved source version detection
+#               1.2.7 Thu  7 Mar 2013 10:23:05 EST
+#               Added package dependancies
+#               1.2.8 Thu  7 Mar 2013 15:48:03 EST
+#               Added support for multiple dependancies
 
 # This script creates solaris packages from a source package or directory (TBD)
 # Source packages are fetched into a source directory, unpacked, compiled
@@ -113,13 +125,19 @@ use File::Basename;
 # If you want HPN patch applied set this variable to 1
 my $hpnssh=1;
 
+# Set directory owner user and group
+# Default for /usr seems to be root:sys
+
+my $dir_user="root";
+my $dir_group="sys";
+
 my $script_name="burst";
 my %option=();
 my $source_file_name;
 my $source_dir_name;
 my $tar_dir_name;
 my $maintainer_email="richard\@lateralblast.com.au";
-my $top_install_dir="/opt";
+my $top_install_dir="/usr/local";
 my $pkg_base_name="LTRL";
 my $real_install_dir;
 my $work_dir="";
@@ -219,11 +237,8 @@ if ($os_name=~/Linux/) {
 
 sub check_env {
 
-  my $user_name;
-  my $home_dir=`echo \$HOME`;
-  my @dir_names;
-  my $dir_name;
-  my $lc_pkg_base_name=lc($pkg_base_name);
+  my $user_name; my $home_dir=`echo \$HOME`;
+  my @dir_names; my $dir_name;
 
   chomp($cc_bin);
   chomp($home_dir);
@@ -258,7 +273,7 @@ sub check_env {
   if (!$option{'i'}) {
     # If real_install_dir not set at top of script, set it
     if ($real_install_dir!~/[a-z]/) {
-      $real_install_dir="$top_install_dir/$lc_pkg_base_name";
+      $real_install_dir=$top_install_dir;
     }
   }
   else {
@@ -299,7 +314,7 @@ sub check_env {
   if (!$option{'i'}) {
     # If real_install_dir not set at top of script, set it
     if ($real_install_dir!~/[a-z]/) {
-      $real_install_dir="$top_install_dir/$lc_pkg_base_name";
+      $real_install_dir=$top_install_dir;
     }
   }
   else {
@@ -313,7 +328,7 @@ sub check_env {
       # and has not been set at the top of the script
       # set it to tmp under the users home directory
       if ($os_name=~/SunOS/) {
-        $user_name=`/usr/xpg4/bin/who am i |awk '{print \$1}'`;
+        $user_name=`id |awk '{print \$1}' |cut -f2 -d"(" |cut -f1 -d")"`;
         chomp($user_name);
         if ($user_name=~/root/) {
           # If root user, use /tmp
@@ -347,6 +362,7 @@ sub check_env {
   if (!$option{'s'}) {
     if (($option{'n'})&&(!$option{'v'})) {
       get_source_version();
+      determine_source_file_name();
     }
     if ((!$option{'n'})||(!$option{'v'})) {
       # If the source file, version and name have not been given 
@@ -428,6 +444,9 @@ sub check_env {
     if ($option{'n'}=~/openssl|openssh/) {
       $option{'p'}=~s/open//;
     }
+    if ($option{'n'}=~/rubygems/) {
+      $option{'p'}=~s/ruby//;
+    }
     if ($option{'r'}=~/6|7|8|9/) {
       if (length($option{'p'}) > 7) {
         $option{'p'}=substr($option{'p'},0,7);
@@ -445,7 +464,24 @@ sub check_env {
       $option{'e'}="";
     }
   }
+  check_deps();
   return;
+}
+
+sub remove_extensions {
+  my @extensions; my $counter=0;
+  my $file_name=$_[0];
+  my $extension;
+  
+  $extensions[$counter]=".tgz"; $counter++;
+  $extensions[$counter]=".tar.gz"; $counter++;
+  $extensions[$counter]=".tar.bz2"; $counter++;
+  $extensions[$counter]=".tbz2"; $counter++;
+  $extensions[$counter]=".tar"; $counter++;
+  foreach $extension (@extensions) {
+    $file_name=~s/$extension//g;
+  }
+  return($file_name);
 }
 
 sub determine_source_file_name {
@@ -478,7 +514,7 @@ sub determine_source_file_name {
   }
   for ($counter=0; $counter<@extensions; $counter++) {
     if ($option{"D"}) {
-      print "Seeing if $file_name_base.$extensions[$counter] exits\n"; 
+      print "Seeing if $file_name_base.$extensions[$counter] exists\n"; 
     }
     if (-e "$file_name_base.$extensions[$counter]") {
       $option{'s'}="$file_name_base.$extensions[$counter]";
@@ -490,6 +526,45 @@ sub determine_source_file_name {
   get_source_file();
   determine_source_file_name();
   return;
+}
+
+sub check_deps {
+  my @dep_list; my $counter=0;
+  my $record; my $dep; my $package;
+  my $pkg_check; my @new_dep_list;
+  
+  $dep_list[$counter]="ruby,yaml:readline:libffi"; $counter++;
+  $dep_list[$counter]="ssh,ssl"; $counter++;
+  
+  foreach $record (@dep_list) {
+    ($package,$dep)=split(",",$record);
+    if ($option{'n'}=~/$package/) {
+      if ($dep=~/:/) {
+        @new_dep_list=split(/:/,$dep);
+        foreach $dep (@new_dep_list) {
+          $dep="$pkg_base_name$dep";
+          if ($os_name=~/SunOS/) {
+            $pkg_check=`pkginfo -l $dep |grep PKGINST |awk '{print \$2}'`;
+            if ($pkg_check!~/$pkg_base_name/) {
+              print "Required package $dep not installed.\n";
+              exit;
+            }
+          }
+        }
+      }
+      else {
+        $dep="$pkg_base_name$dep";
+        if ($os_name=~/SunOS/) {
+          $pkg_check=`pkginfo -l $dep |grep PKGINST |awk '{print \$2}'`;
+          if ($pkg_check!~/$pkg_base_name/) {
+            print "Required package $dep not installed.\n";
+            exit;
+          }
+        }
+      }
+    }
+  }
+
 }
 
 sub populate_source_list {
@@ -504,13 +579,22 @@ sub populate_source_list {
   $source_list[$counter]="http://www.openssl.org/source/openssl-1.0.1e.tar.gz"; $counter++;
   $source_list[$counter]="http://www.orcaware.com/orca/pub/snapshots/orca-snapshot-r557.tar.bz2"; $counter++;
   $source_list[$counter]="http://downloads.sourceforge.net/project/setoolkit/SE%20Toolkit/SE%20Toolkit%203.5.1/setoolkit-3.5.1.tar.gz"; $counter++;
-  $source_list[$counter]="ftp://ftp.gnu.org/gnu/wget/wget-1.9.1.tar.gz"; $counter++;
   $source_list[$counter]="http://www.cpan.org/src/5.0/perl-5.16.2.tar.gz"; $counter++;
   $source_list[$counter]="ftp://ftp.gnu.org/gnu/bash/bash-4.2.tar.gz"; $counter++;
   $source_list[$counter]="http://www.openwall.com/john/g/john-1.7.9.tar.gz"; $counter++;
   $source_list[$counter]="http://ftp.gnu.org/gnu/patch/patch-2.7.1.tar.gz"; $counter++;
   $source_list[$counter]="http://ftp.gnu.org/gnu/diffutils/diffutils-3.2.tar.gz"; $counter++;
   $source_list[$counter]="http://zlib.net/zlib-1.2.7.tar.gz"; $counter++;
+  $source_list[$counter]="http://www.sudo.ws/sudo/dist/sudo-1.8.6p7.tar.gz"; $counter++;
+  $source_list[$counter]="ftp://ftp.gnu.org/gnu/wget/wget-1.14.tar.gz"; $counter++;
+  $source_list[$counter]="ftp://ftp.ruby-lang.org/pub/ruby/1.9/ruby-1.9.3-p392.tar.bz2"; $counter++;
+  $source_list[$counter]="http://production.cf.rubygems.org/rubygems/rubygems-2.0.2.tgz"; $counter++;
+  $source_list[$counter]="http://pyyaml.org/download/libyaml/yaml-0.1.4.tar.gz"; $counter++;
+  $source_list[$counter]="ftp://ftp.gnu.org/gnu/readline/readline-6.2.tar.gz"; $counter++;
+  $source_list[$counter]="ftp://ftp.gnu.org/gnu/gdbm/gdbm-1.10.tar.gz"; $counter++;
+  $source_list[$counter]="http://downloads.puppetlabs.com/puppet/puppet-3.1.0.tar.gz"; $counter++;
+  $source_list[$counter]="http://downloads.puppetlabs.com/facter/facter-1.6.17.tar.gz"; $counter++;
+  $source_list[$counter]="ftp://sourceware.org/pub/libffi/libffi-3.0.12.tar.gz"; $counter++;
   #$source_list[$counter]=""; $counter++;
 
   return @source_list;
@@ -524,9 +608,9 @@ sub get_source_version {
   @source_list=populate_source_list();
   foreach $source_url (@source_list) {
     if ($source_url=~/$option{'n'}/) {
-      ($header,$option{'v'})=split("$option{'n'}-",$source_url);
-      $option{'v'}=~s/\.tar\.gz//g;
-      $option{'v'}=~s/\.tar\.bz2//g;
+      $header=basename($source_url);
+      ($header,$option{'v'})=split("$option{'n'}-",$header);
+      $option{'v'}=remove_extensions($option{'v'});
       print "Setting package version to $option{'v'}\n";
       return;
     }
@@ -537,8 +621,8 @@ sub get_source_version {
 sub get_source_file {
   
   my @source_list; my $counter=0;
-  my $source_url; my $result=0;
-  my $command; my $src_dir;
+  my $source_url; my $command; 
+  my $src_dir; my $wget_test;
   
   if ($os_name=~/SunOS/) {
     $src_dir="$work_dir/src";
@@ -549,14 +633,16 @@ sub get_source_file {
   @source_list=populate_source_list();
   foreach $source_url (@source_list) {
     if ($source_url=~/$option{'n'}-$option{'v'}/) {
-      $result=1;
-      $command="cd $src_dir ; wget $source_url";
-      print_debug("Executing: $command","long");
-      system("$command");
+      $wget_test=`which wget`;
+      if ($wget_test!~/no wget/) {
+        $command="cd $src_dir ; wget $source_url";
+        print_debug("Executing: $command","long");
+        system("$command");
+      }
+      else {
+        print "No wget found\n";
+      }
     }
-  }
-  if ($result eq 0) {
-    exit
   }
   return;
 }
@@ -567,20 +653,22 @@ sub extract_source {
   
   determine_source_dir_name();
   
-  $command="rm -rf $source_dir_name";
-  print_debug("Executing: $command","long");
-  system("$command");
+  if ($source_dir_name!~/src\/$/) {
+    $command="rm -rf $source_dir_name";
+    print_debug("Executing: $command","long");
+    system("$command");
+  }
   if (-e "$option{'s'}") {
     $file_type=`file $option{'s'}`;
     chomp($file_type);
     if ($file_type=~/USTAR tar archive/) {
-      $command="cd $work_dir/src ; tar -xf $option{'s'}";
+      $command="cd $work_dir/src ; /usr/sfw/bin/gtar -xf $option{'s'}";
     }
     if ($file_type=~/gzip compressed data/) {
-      $command="cd $work_dir/src ; gzcat $option{'s'} |tar -xf -";
+      $command="cd $work_dir/src ; gzcat $option{'s'} | /usr/sfw/bin/gtar -xf -";
     }
     if ($file_type=~/bzip2 compressed data/) {
-      $command="cd $work_dir/src ; bzcat $option{'s'} |tar -xf -";
+      $command="cd $work_dir/src ; bzcat $option{'s'} | /usr/sfw/bin/gtar -xf -";
     }
     system("$command");
     print_debug("Executing: $command","long");
@@ -594,13 +682,51 @@ sub extract_source {
 
 sub determine_source_dir_name {
 
-  my $dir_name=`tar -tf $option{'s'} |head -1`;
+  my $dir_name=`/usr/sfw/bin/gtar -tf $option{'s'} |head -1`;
   my @values=split("/",$dir_name);
   my $conf_string;
 
   $source_dir_name="$work_dir/src/$values[0]";
   chomp($source_dir_name);
   return;
+}
+
+sub search_conf_list {
+
+  my @commands; my $counter=0;
+  my $command; my $record;
+  my $package; my $conf_string;
+  
+  $commands[$counter]="wget,CC=\"cc\" ; export CC ; ./configure --prefix=$real_install_dir --with-ssl=openssl --with-libssl-prefix=$real_install_dir"; $counter++;
+  $commands[$counter]="openssl,CC=\"cc\" ; export CC ; ./Configure --prefix=$real_install_dir --openssldir=$real_install_dir zlib-dynamic threads shared solaris-x86-cc"; $counter++;
+  $commands[$counter]="sudo,CC=\"cc\" ; export CC ; ./configure --prefix=$real_install_dir --enable-pam"; $counter++;
+  if ($os_name=~/SunOS/) {
+    if ($option{'n'}=~/orca|setoolkit/) {
+      if ($option{'n'}=~/orca/) {
+        $conf_string="--prefix=$real_install_dir --with-rrd-dir=/var/orca/rrd --with-html-dir=/var/orca/html --with-var-dir=/var/orca --build=$option{'a'}-sun-solaris2.$option{'r'} --radius_db=off";
+        $commands[$counter]="orca,ORCA_CONFIGURE_COMMAND_LINE=\"$conf_string\" ; export ORCA_CONFIGURE_COMMAND_LINE ; PATH=\"\$PATH:/usr/ccs/bin\" ; export PATH ; CC=\"$cc_bin\" ; export CC ; ./configure $conf_string"; $counter++;
+      }
+      if ($option{'n'}=~/setoolkit/) {
+        $commands[$counter]="setoolkit,CC=\"CC\" ; export CC ; ./configure --prefix=$real_install_dir --with-se-include-dir=$real_install_dir/include --with-se-examples-dir=$real_install_dir/examples"; $counter++;
+      }
+    }
+    $commands[$counter]="perl,CC=\"gcc\" ; export CC ; ./Configure -des -Dusethreads -Dcc=\"gcc -m32\" -Dprefix=$real_install_dir -Dusedttrace -Dusefaststdio -Duseshrplib -Dusevfork -Dless=less -Duse64bitall -Duse64bitint -Dpager=more"; $counter++;
+    if ($option{'r'}!~/9|10|11/) {
+      $commands[$counter]="ssh,CFLAGS=\"\$CFLAGS -I$real_install_dir/include\" ; export CFLAGS ; CC=cc ; export CC ; ./configure --prefix=$real_install_dir --with-zlib --with-solaris-contracts --with-solaris-projects --with-tcp-wrappers=$real_install_dir --with-ssl-dir=$real_install_dir --with-privsep-user=sshd --with-md5-passwords --with-xauth=/usr/openwin/bin/xauth --with-mantype=man --with-pid-dir=/var/run --with-pam --with-audit=bsm --enable-shared"; $counter++;
+    }
+    else {
+      $commands[$counter]="openssh,CFLAGS=\"\$CFLAGS -I$real_install_dir/include -I/usr/sfw/include\" ; export CFLAGS ; CC=cc ; export CC ; ./configure --prefix=$real_install_dir --with-zlib --with-solaris-contracts --with-solaris-projects --with-tcp-wrappers=/usr/sfw --with-ssl-dir=$real_install_dir --with-privsep-user=sshd --with-md5-passwords --with-xauth=/usr/openwin/bin/xauth --with-mantype=man --with-pid-dir=/var/run --with-pam --with-audit=bsm --enable-shared"; $counter++;
+    }
+    $commands[$counter]="ruby,CC=cc ; export CC ; ./configure --prefix=$real_install_dir --enable-shared"
+  }
+  foreach $command (@commands) {
+    ($package,$command)=split(",",$command);
+    if ($package=~/^$option{'n'}$/) {
+      return($command);
+    }
+  }
+  $command="LD_LIBRARY_PATH=\"\$LD_LIBRARY_PATH:$real_install_dir/lib\" ; export LD_LIBRARY_PATH; CFLAGS=\"\$CFLAGS -I$real_install_dir/include\" ; export CFLAGS ; CC=cc ; export CC ; ./configure --prefix=$real_install_dir --enable-shared";
+  return($command);
 }
 
 sub compile_source {
@@ -623,15 +749,7 @@ sub compile_source {
   # as much as possible
 
   determine_source_dir_name();
-  if ($option{'n'}=~/wget/) {
-    $commands[$counter]="CC=\"$cc_bin\" ; export CC ; ./configure --prefix=$real_install_dir --with-ssl=openssl"; $counter++;
-  }
-  if ($option{'n'}=~/openssl/) {
-    $commands[$counter]="CC=\"cc\" ; export CC ; ./Configure --prefix=$real_install_dir --openssldir=$real_install_dir zlib-dynamic threads shared solaris-x86-cc"; $counter++;
-  }
-  if ($option{'n'}=~/zlib/) {
-    $commands[$counter]="./configure --prefix=$real_install_dir --enable-shared"; $counter++;
-  }
+ 
   if ($option{'n'}=~/openssh/) {
     if ($hpnssh eq 1) {
       $patch_file="$src_dir/openssh-6.1p1-hpn13v14.diff";
@@ -648,31 +766,8 @@ sub compile_source {
         exit;
       }
     }
-    if ($option{'r'}!~/9|10|11/) {
-      $commands[$counter]="CFLAGS=\"\$CFLAGS -I$real_install_dir/include\" ; export CFLAGS ; CC=cc ; export CC ; ./configure --prefix=$real_install_dir --with-zlib --with-solaris-contracts --with-solaris-projects --with-tcp-wrappers=$real_install_dir --with-ssl-dir=$real_install_dir --with-privsep-user=sshd --with-md5-passwords --with-xauth=/usr/openwin/bin/xauth --with-mantype=man --with-pid-dir=/var/run --with-pam --with-audit=bsm --enable-shared"; $counter++;
-    }
-    else {
-      $commands[$counter]="CFLAGS=\"\$CFLAGS -I$real_install_dir/include -I/usr/sfw/include\" ; export CFLAGS ; CC=cc ; export CC ; ./configure --prefix=$real_install_dir --with-zlib --with-solaris-contracts --with-solaris-projects --with-tcp-wrappers=/usr/sfw --with-ssl-dir=$real_install_dir --with-privsep-user=sshd --with-md5-passwords --with-xauth=/usr/openwin/bin/xauth --with-mantype=man --with-pid-dir=/var/run --with-pam --with-audit=bsm --enable-shared"; $counter++;
-    }
-    $config_flag=1;
   }
-  if ($option{'n'}=~/perl/) {
-    $commands[$counter]="CC=\"gcc\" ; export CC ; ./Configure -des -Dusethreads -Dcc=\"gcc -m32\" -Dprefix=$real_install_dir -Dusedttrace -Dusefaststdio -Duseshrplib -Dusevfork -Dless=less -Duse64bitall -Duse64bitint -Dpager=more"; $counter++;
-    $config_flag=1;
-  }
-  if ($option{'n'}=~/orca|setoolkit/) {
-    if ($option{'n'}=~/orca/) {
-      $conf_string="--prefix=$real_install_dir --with-rrd-dir=/var/orca/rrd --with-html-dir=/var/orca/html --with-var-dir=/var/orca --build=$option{'a'}-sun-solaris2.$option{'r'} --radius_db=off";
-      $commands[$counter]="ORCA_CONFIGURE_COMMAND_LINE=\"$conf_string\" ; export ORCA_CONFIGURE_COMMAND_LINE ; PATH=\"\$PATH:/usr/ccs/bin\" ; export PATH ; CC=\"$cc_bin\" ; export CC ; ./configure $conf_string"; $counter++;
-    }
-    if ($option{'n'}=~/setoolkit/) {
-      $commands[$counter]="CC=\"$cc_bin\" ; export CC ; ./configure --prefix=$real_install_dir --with-se-include-dir=$real_install_dir/include --with-se-examples-dir=$real_install_dir/examples"; $counter++;
-    }
-    $config_flag=1;
-  }
-  if ($config_flag eq 0) {
-    $commands[$counter]="CC=\"$cc_bin\" ; export CC ; ./configure --prefix=$real_install_dir"; $counter++;
-  }
+  $commands[$counter]=search_conf_list(); $counter++;
   if ($option{'n'}=~/bsl/) {
     $commands[$counter]="cp config-top.h config-top.h.orig"; $counter++;
     $commands[$counter]="cat config-top.h.orig |sed 's,/\\* #define SYSLOG_HISTORY \\*/,#define SYSLOG_HISTORY,' > config-top.h"; $counter++;
@@ -688,7 +783,7 @@ sub compile_source {
     }
   }
   else {
-    $commands[$counter]="make all"; $counter++;
+    $commands[$counter]="LD_LIBRARY_PATH=\"\$LD_LIBRARY_PATH:$real_install_dir/lib\" ; export LD_LIBRARY_PATH; CFLAGS=\"\$CFLAGS -I$real_install_dir/include\" ; export CFLAGS ; CC=cc ; export CC ; make all"; $counter++;
   }
   $commands[$counter]="cd $ins_dir ; rm -rf *"; $counter++;
   if ($option{'n'}=~/openssl/) {
@@ -697,7 +792,7 @@ sub compile_source {
   else {
     if ($option{'n'}=~/john/) {
       $commands[$counter]="mkdir -p $ins_pkg_dir/bin"; $counter++;
-      $commands[$counter]="(cd run ; tar -cpf - . )|(cd $ins_pkg_dir/bin ; tar -xpf - )"; $counter++;
+      $commands[$counter]="(cd run ; /usr/sfw/bin/gtar -cpf - . )|(cd $ins_pkg_dir/bin ; /usr/sfw/bin/gtar -xpf - )"; $counter++;
     }
     else {
       $commands[$counter]="make DESTDIR=$ins_dir install"; $counter++;
@@ -804,6 +899,11 @@ sub compile_source {
     $commands[$counter]="cat $ins_pkg_dir/bin/start_orcallator.orig |sed 's,$real_install_dir/orca/var/orcallator,/var/orca,' > $ins_pkg_dir/bin/start_orcallator"; $counter++;
     $commands[$counter]="rm $ins_pkg_dir/bin/start_orcallator.orig"; $counter++;
   }
+  #if ($option{'n'}=~/ruby/) {
+  #  $commands[$counter]="GEM_HOME=\"$ins_pkg_dir/lib/ruby/gems/1.9.1\" ; export GEM_HOME ; $ins_pkg_dir/bin/gem update"; $counter++;
+  #  $commands[$counter]="GEM_HOME=\"$ins_pkg_dir/lib/ruby/gems/1.9.1\" ; export GEM_HOME ; $ins_pkg_dir/bin/gem install puppet"; $counter++;
+  #  $commands[$counter]="GEM_HOME=\"$ins_pkg_dir/lib/ruby/gems/1.9.1\" ; export GEM_HOME ; $ins_pkg_dir/bin/gem install vagrant"; $counter++;
+  #}
   if (-e "$source_dir_name") {
     if ($option{'n'}=~/orca/) {
       # Fix up problem with handling $@ in orca configure script
@@ -822,6 +922,7 @@ sub compile_source {
     print "Source file $option{'s'} does not exist\n";
     exit;
   }
+  return;
 }
 
 # Create BASE/ins/[pkginfo,prototype] and produce a spooled package
@@ -1118,7 +1219,7 @@ sub create_spool {
     }
   }
   close PROTO_FILE;
-  $command="cd $ins_dir ; find . -print |grep -v './pkginfo' |grep -v './prototype' |grep -v './postinstall' |grep -v './preremove' |grep -v './preinstall' |grep -v './postremove' |grep -v './checkinstall' |pkgproto | sed 's/$user_name $group_name/root bin/g' |sed 's/d none opt 0755 root bin/d none opt 0755 root sys/g' >> $proto_file";
+  $command="cd $ins_dir ; find . -print |grep -v './pkginfo' |grep -v './prototype' |grep -v './postinstall' |grep -v './preremove' |grep -v './preinstall' |grep -v './postremove' |grep -v './checkinstall' |pkgproto | sed 's/$user_name $group_name/$dir_user $dir_group/g' >> $proto_file";
   print_debug("Executing: $command","long");
   system("$command");
   open INFO_FILE,">$info_file";
