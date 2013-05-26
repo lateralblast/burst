@@ -26,5 +26,5 @@ Example
   
 Create a setoolkit package, let script determine version information, and set package name to PKGse:
   
-    burst -d /tmp/burst -s /tmp/setoolkit-3.5.1.tar -p PKGse;
+    burst -d /tmp/burst -s /tmp/setoolkit-3.5.1.tar -p PKGse
 
