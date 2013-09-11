@@ -4,7 +4,7 @@ use Getopt::Std;
 use File::Basename;
 
 # Name:         burst (Build Unaided Rules Source Tool)
-# Version:      1.2.9
+# Version:      1.3.0
 # Release:      1
 # License:      Open Source
 # Group:        System
@@ -75,6 +75,8 @@ use File::Basename;
 #               Added support for multiple dependancies
 #               1.2.9 Wed 11 Sep 2013 13:42:29 EST
 #               Added support for creating RSA SecurID PAM package 
+#               1.3.0 Wed 11 Sep 2013 14:03:52 EST
+#               Added sdconf.rec and sd_pam.conf to RSA package
 
 # This script creates solaris packages from a source package or directory (TBD)
 # Source packages are fetched into a source directory, unpacked, compiled
@@ -1047,6 +1049,8 @@ sub create_spool {
 					print "mkdir -p $spool_dir/opt/pam\n";
 					print	"(cd /opt/pam ; tar -cpf - . )|( cd $spool_dir/opt/pam ; tar -xpf - )\n";
 					print "find /usr/lib -name \"*securid*\" |cpio -pdm $spool_dir\n";
+          print "find /etc -name sd_pam.conf |cpio -pdm $spool_dir\n";
+          print "find /var/ace -name sdconf.rec |cpio -pdm $spool_dir\n";
 					print "chown -R $user_name $spool_dir\n";
 					exit;
 				}
@@ -1057,6 +1061,8 @@ sub create_spool {
 				system("chmod 400 $spool_dir/opt/pam");
 				system("(cd /opt/pam ; tar -cpf - . )|( cd $spool_dir/opt/pam ; tar -xpf - )");
 				system("find /usr/lib -name \"*securid*\" |cpio -pdm $spool_dir");
+        system("find /etc -name sd_pam.conf |cpio -pdm $spool_dir");
+        system("find /var/ace -name sdconf.rec |cpio -pdm $spool_dir");
 			}
 		}
 	}
