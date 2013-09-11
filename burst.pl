@@ -4,7 +4,7 @@ use Getopt::Std;
 use File::Basename;
 
 # Name:         burst (Build Unaided Rules Source Tool)
-# Version:      1.2.8
+# Version:      1.2.9
 # Release:      1
 # License:      Open Source
 # Group:        System
@@ -73,6 +73,8 @@ use File::Basename;
 #               Added package dependancies
 #               1.2.8 Thu  7 Mar 2013 15:48:03 EST
 #               Added support for multiple dependancies
+#               1.2.9 Wed 11 Sep 2013 13:42:29 EST
+#               Added support for creating RSA SecurID PAM package 
 
 # This script creates solaris packages from a source package or directory (TBD)
 # Source packages are fetched into a source directory, unpacked, compiled
@@ -130,6 +132,7 @@ my $hpnssh=1;
 
 my $dir_user="root";
 my $dir_group="sys";
+my $user_name;
 
 my $script_name="burst";
 my %option=();
@@ -146,13 +149,14 @@ my $vendor_string="Lateral Blast";
 my $log_file;
 my $os_name=`uname`;
 my $os_arch=`uname -p`;
+my $options="Ba:b:c:d:e:f:i:l:n:p:r:s:u:v:w:hCD:V";
 
-if ($#ARGV < 0) {
-  usage();
-  exit;
+if ($#ARGV == -1) {
+  print_usage();
 }
-
-getopts("a:b:c:d:e:f:i:l:n:p:r:s:u:v:w:hCD:V",\%option);
+else {
+  getopts($options,\%option);
+}
 
 # IF given -h print help
 
@@ -183,10 +187,11 @@ if ($option{'V'}) {
 sub print_usage {
   print "\n";
   print "Usage:\n";
-  print "$script_name [-w WORK_DIR] [-n SRC_PKG_NAME] [-p SOL_PKG_NAME] [-v PKG_VER] [-h]\n"; 
+  print "$script_name -[$options]\n"; 
   print "\n";
   print "-h: Display help\n";
   print "-w: Working (base) directory\n"; 
+  print "-n: Source name\n";
   print "-p: Package name\n";
   print "-s: Source file\n";
   print "-a: Architecture (eg sparc)\n";
@@ -195,6 +200,7 @@ sub print_usage {
   print "-e: Email address of package maintainer\n";
   print "-i: Install base dir (eg /usr/local)\n";
   print "-D: Verbose output (debug)\n";
+  print "-B: Create a package from a binary install (eg SecurID PAM Agent)\n";
   print "\n";
   print "Example:\n";
   print "$script_name -d /tmp/$script_name -s /tmp/setoolkit-3.5.1.tar -p $pkg_base_name";
@@ -218,8 +224,10 @@ sub get_script_version {
 
 check_env();
 if ($os_name=~/SunOS/) {
-  extract_source();
-  compile_source();
+	if (!$option{'B'}) {
+	  extract_source();
+		compile_source();
+	}
   create_spool();
   create_trans();
   create_pkg();
@@ -237,8 +245,10 @@ if ($os_name=~/Linux/) {
 
 sub check_env {
 
-  my $user_name; my $home_dir=`echo \$HOME`;
-  my @dir_names; my $dir_name;
+  my $home_dir=`echo \$HOME`;
+  my @dir_names; 
+  my $dir_name;
+  my $pam_lib;
 
   chomp($cc_bin);
   chomp($home_dir);
@@ -280,6 +290,9 @@ sub check_env {
     # if -i used, set real_install_dir from command line
     $real_install_dir=$option{'i'};
   }
+	if ($option{'B'}) {
+		$real_install_dir="/";
+	}
   print "Setting package install directory to: $real_install_dir\n";
   if (!$option{'a'}) {
     # If the architecture is not specified, get it
@@ -360,6 +373,24 @@ sub check_env {
     }
   }
   if (!$option{'s'}) {
+		if ($option{'n'}=~/rsa/) {
+			if ($os_name=~/SunOS/) {
+				$pam_lib="/usr/lib/security/sparcv9/pam_securid.so";
+				if (! -e "$pam_lib") {
+					print "RSA SecurID PAM Agent is not installed\n";
+					print "Install agent and re-run script\n";
+					exit;
+				}
+				else {
+					$option{'v'}=`strings $pam_lib |grep 'API Version' |awk '{print \$5"."\$6"."\$7}'`;
+					chomp($option{'v'});
+					$option{'v'}=~s/ //g;
+					$option{'v'}=~s/_/./g;
+					$option{'v'}=~s/\[//g;
+					$option{'v'}=~s/\]//g;
+				}
+			}
+		}
     if (($option{'n'})&&(!$option{'v'})) {
       get_source_version();
       determine_source_file_name();
@@ -376,14 +407,22 @@ sub check_env {
       # If not given a source file name, try to determine it
       # from other information given, eg -n and -v
       # If the source file does not exist then exit
-      determine_source_file_name();
-      if ($option{'s'}!~/[0-9]/) {
-        exit;
-      }
+			if (!$option{'B'}) {
+	      determine_source_file_name();
+	      if ($option{'s'}!~/[0-9]/) {
+	        exit;
+	      }
+			}
+			else {
+				if (!$option{'c'}) {
+					$option{'c'}="Application";
+				}
+			}
     }
-  }
+ 	} 
   else {
     if (!-e "$option{'s'}") {
+			
       # If the source file given via -s does not exist
       # then try to guess it via -v and -n
       # If the source file does not exist then exit
@@ -430,10 +469,12 @@ sub check_env {
       }
     }
     else {
-      ($option{'n'},$option{'v'})=split('\-',$source_file_name);
-      $option{'v'}=~s/\.tar\.gz//g;
-      $option{'v'}=~s/\.tar//g;
-      $option{'v'}=~s/\.tgz//g;
+			if (!$option{'B'}) {
+	      ($option{'n'},$option{'v'})=split('\-',$source_file_name);
+	      $option{'v'}=~s/\.tar\.gz//g;
+	      $option{'v'}=~s/\.tar//g;
+	      $option{'v'}=~s/\.tgz//g;
+			}
     }
   }
   if (!$option{'p'}) {
@@ -455,10 +496,12 @@ sub check_env {
   }
   print_debug("","short");
   print_debug("Work dir:       $work_dir","short");
-  print_debug("Source file:    $option{'s'}","short");
+	if (!$option{'B'}) {
+  	print_debug("Source file:    $option{'s'}","short");
+  	print_debug("Source name:    $option{'n'}","short");
+	  print_debug("Source version: $option{'v'}","short");
+	}
   print_debug("Package name:   $option{'p'}","short");
-  print_debug("Source name:    $option{'n'}","short");
-  print_debug("Source version: $option{'v'}","short");
   if (!$option{'e'}) {
     if ($maintainer_email!~/[a-z]/) {
       $option{'e'}="";
@@ -469,7 +512,8 @@ sub check_env {
 }
 
 sub remove_extensions {
-  my @extensions; my $counter=0;
+  my @extensions; 
+  my $counter=0;
   my $file_name=$_[0];
   my $extension;
   
@@ -486,8 +530,11 @@ sub remove_extensions {
 
 sub determine_source_file_name {
 
-  my @extensions; my $record; my $counter;
-  my $file_name_base; my $src_dir;
+  my @extensions; 
+  my $record; 
+  my $counter;
+  my $file_name_base; 
+  my $src_dir;
 
   if ($os_name=~/SunOS/) {
     $src_dir="$work_dir/src";
@@ -529,9 +576,13 @@ sub determine_source_file_name {
 }
 
 sub check_deps {
-  my @dep_list; my $counter=0;
-  my $record; my $dep; my $package;
-  my $pkg_check; my @new_dep_list;
+  my @dep_list; 
+  my $counter=0;
+  my $record; 
+  my $dep; 
+  my $package;
+  my $pkg_check; 
+  my @new_dep_list;
   
   $dep_list[$counter]="ruby,yaml:readline:libffi"; $counter++;
   $dep_list[$counter]="ssh,ssl"; $counter++;
@@ -569,7 +620,8 @@ sub check_deps {
 
 sub populate_source_list {
   
-  my @source_list; my $counter=0;
+  my @source_list; 
+  my $counter=0;
   my $package_name=$option{'n'};
 
   if ($package_name=~/bsl/) {
@@ -602,9 +654,11 @@ sub populate_source_list {
 
 sub get_source_version {
   
-  my @source_list; my $counter=0;
-  my $source_url; my $header;
-  
+  my @source_list; 
+  my $counter=0;
+  my $source_url; 
+  my $header;
+
   @source_list=populate_source_list();
   foreach $source_url (@source_list) {
     if ($source_url=~/$option{'n'}/) {
@@ -620,9 +674,12 @@ sub get_source_version {
 
 sub get_source_file {
   
-  my @source_list; my $counter=0;
-  my $source_url; my $command; 
-  my $src_dir; my $wget_test;
+  my @source_list; 
+  my $counter=0;
+  my $source_url; 
+  my $command; 
+  my $src_dir; 
+  my $wget_test;
   
   if ($os_name=~/SunOS/) {
     $src_dir="$work_dir/src";
@@ -649,7 +706,8 @@ sub get_source_file {
 
 sub extract_source {
 
-  my $file_type; my $command;
+  my $file_type; 
+  my $command;
   
   determine_source_dir_name();
   
@@ -693,9 +751,12 @@ sub determine_source_dir_name {
 
 sub search_conf_list {
 
-  my @commands; my $counter=0;
-  my $command; my $record;
-  my $package; my $conf_string;
+  my @commands; 
+  my $counter=0;
+  my $command; 
+  my $record;
+  my $package; 
+  my $conf_string;
   
   $commands[$counter]="wget,CC=\"cc\" ; export CC ; ./configure --prefix=$real_install_dir --with-ssl=openssl --with-libssl-prefix=$real_install_dir"; $counter++;
   $commands[$counter]="openssl,CC=\"cc\" ; export CC ; ./Configure --prefix=$real_install_dir --openssldir=$real_install_dir zlib-dynamic threads shared solaris-x86-cc"; $counter++;
@@ -731,13 +792,18 @@ sub search_conf_list {
 
 sub compile_source {
 
-  my @commands; my $command;
+  my @commands; 
+  my $command;
   my $ins_dir="$work_dir/ins";
   my $src_dir="$work_dir/src";
-  my $conf_string; my $counter=0;
-  my @files; my $file; my $se_version;
+  my $conf_string; 
+  my $counter=0;
+  my @files; 
+  my $file; 
+  my $se_version;
   my $ins_pkg_dir="$ins_dir$real_install_dir";
-  my $patch_file; my $config_flag=0;
+  my $patch_file; 
+  my $config_flag=0;
   
   # Reminder:
   # ins_dir = Root of work directory, eg /export/home/user/burst/ins
@@ -749,7 +815,6 @@ sub compile_source {
   # as much as possible
 
   determine_source_dir_name();
- 
   if ($option{'n'}=~/openssh/) {
     if ($hpnssh eq 1) {
       $patch_file="$src_dir/openssh-6.1p1-hpn13v14.diff";
@@ -945,14 +1010,18 @@ sub create_spool {
   my $pstamp_string="PSTAMP=\"\"";
   my $classes_string="CLASSES=\"none\"";
   my $basedir_string="BASEDIR=\"/\"";
-  my $version_string; my $user_info=`id`;
+  my $version_string; 
+  my $user_info=`id`;
   my @values=split(" ",$user_info);
   my $user_name=$values[0];
   my $group_name=$values[1];
-  my $header; my $init_file;
+  my $header; 
+  my $init_file;
   my $postinstall_file="$ins_dir/postinstall";
   my $preremove_file="$ins_dir/preremove";
-  my @file_contents; my $script_name; my $command;
+  my @file_contents; 
+  my $script_name; 
+  my $command;
   my @script_names=('preinstall','postinstall','preremove','postremove','checkinstall');
 
   # Reminder:
@@ -966,15 +1035,38 @@ sub create_spool {
   
   # If there are any package specific scripts copy them into the spool directory
 
-  if ((-e "$spool_dir")&&($spool_dir=~/[A-z]/)) {
-    print "Cleaning up $spool_dir...\n";
-    system("cd $spool_dir ; rm -rf *");
-  }
-  $vendor_string="VENDOR=\"$vendor_string\"";	
   ($header,$user_name)=split('\(',$user_name);	
   ($header,$group_name)=split('\(',$group_name);	
   $user_name=~s/\)//g;
   $group_name=~s/\)//g;
+	if ($option{'B'}) {
+		if ($option{'p'}=~/rsa/) {
+			if ($user_name!~/root/) {
+				if (! -e "$spool_dir/uninstall_pam.sh") {
+					print "Execute the following commands as root and re-run scripr:\n";
+					print "mkdir -p $spool_dir/opt/pam\n";
+					print	"(cd /opt/pam ; tar -cpf - . )|( cd $spool_dir/opt/pam ; tar -xpf - )\n";
+					print "find /usr/lib -name \"*securid*\" |cpio -pdm $spool_dir\n";
+					print "chown -R $user_name $spool_dir\n";
+					exit;
+				}
+			}
+			else {
+				system("mkdir -p $spool_dir/opt/pam");
+				system("chown root:bin $spool_dir/opt/pam");
+				system("chmod 400 $spool_dir/opt/pam");
+				system("(cd /opt/pam ; tar -cpf - . )|( cd $spool_dir/opt/pam ; tar -xpf - )");
+				system("find /usr/lib -name \"*securid*\" |cpio -pdm $spool_dir");
+			}
+		}
+	}
+	else {
+	  if ((-e "$spool_dir")&&($spool_dir=~/[A-z]/)) {
+	    print "Cleaning up $spool_dir...\n";
+	    system("cd $spool_dir ; rm -rf *");
+	  }
+	}
+  $vendor_string="VENDOR=\"$vendor_string\"";	
   chomp($date_string);
   $version_string="VERSION=\"$option{'v'},REV=$date_string\"";
   if ($option{'D'}) {
@@ -1244,16 +1336,21 @@ sub create_trans {
   my $trans_dir="$work_dir/trans";
   my $spool_dir="$work_dir/spool";
   my $proto_file="$ins_dir/prototype";
-  my @prototype; my $command;
+  my @prototype; 
+  my $command;
+	my $file_name;
 
   if ((-e "$trans_dir")&&($trans_dir=~/[A-z]/)) {
     print "Cleaning up $trans_dir...\n";
     system("cd $trans_dir ; rm -rf *");
   }
   $command="cd $ins_dir ; pkgmk -o -r . -d $spool_dir -f $proto_file";
-  print_debug("prototype file contents:","long");
+  print_debug("Prototype file contents:","long");
   @prototype=`cat $proto_file`;
-  print_debug(" @prototype","long");
+	foreach $file_name (@prototype) {
+		chomp($file_name);
+	  print_debug("$file_name","normal");
+	}
   print_debug("Executing: $command","long");
   system("$command");
   return;
