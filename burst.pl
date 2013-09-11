@@ -4,7 +4,7 @@ use Getopt::Std;
 use File::Basename;
 
 # Name:         burst (Build Unaided Rules Source Tool)
-# Version:      1.3.0
+# Version:      1.3.2
 # Release:      1
 # License:      Open Source
 # Group:        System
@@ -77,6 +77,10 @@ use File::Basename;
 #               Added support for creating RSA SecurID PAM package 
 #               1.3.0 Wed 11 Sep 2013 14:03:52 EST
 #               Added sdconf.rec and sd_pam.conf to RSA package
+#               1.3.1 Wed 11 Sep 2013 14:19:22 EST
+#               Fixed package creation for RSA
+#               1.3.2 Thu 12 Sep 2013 08:29:20 EST
+#               Updated SPEC file creation
 
 # This script creates solaris packages from a source package or directory (TBD)
 # Source packages are fetched into a source directory, unpacked, compiled
@@ -378,19 +382,27 @@ sub check_env {
 		if ($option{'n'}=~/rsa/) {
 			if ($os_name=~/SunOS/) {
 				$pam_lib="/usr/lib/security/sparcv9/pam_securid.so";
-				if (! -e "$pam_lib") {
-					print "RSA SecurID PAM Agent is not installed\n";
-					print "Install agent and re-run script\n";
-					exit;
-				}
-				else {
-					$option{'v'}=`strings $pam_lib |grep 'API Version' |awk '{print \$5"."\$6"."\$7}'`;
-					chomp($option{'v'});
-					$option{'v'}=~s/ //g;
-					$option{'v'}=~s/_/./g;
-					$option{'v'}=~s/\[//g;
-					$option{'v'}=~s/\]//g;
-				}
+      }
+      else {
+        if ($os_arch=~/64/) {
+          $pam_lib="/lib64/security/pam_securid.so"
+        }
+        else {
+          $pam_lib="/lib/security/pam_securid.so"
+        }
+      }
+			if (! -e "$pam_lib") {
+				print "RSA SecurID PAM Agent is not installed\n";
+				print "Install agent and re-run script\n";
+				exit;
+			}
+			else {
+				$option{'v'}=`strings $pam_lib |grep 'API Version' |awk '{print \$5"."\$6"."\$7}'`;
+				chomp($option{'v'});
+				$option{'v'}=~s/ //g;
+				$option{'v'}=~s/_/./g;
+				$option{'v'}=~s/\[//g;
+				$option{'v'}=~s/\]//g;
 			}
 		}
     if (($option{'n'})&&(!$option{'v'})) {
@@ -1025,6 +1037,7 @@ sub create_spool {
   my $script_name; 
   my $command;
   my @script_names=('preinstall','postinstall','preremove','postremove','checkinstall');
+  my $lib_dir;
 
   # Reminder:
   # ins_dir = Root of work directory, eg /export/home/user/burst/ins
@@ -1037,40 +1050,49 @@ sub create_spool {
   
   # If there are any package specific scripts copy them into the spool directory
 
+  if ($os_name=~/SunOS/) {
+    $lib_dir="/usr/lib";
+  }
+  else {
+    if ($os_arch=~/64/) {
+      $lib_dir="/lib64";
+    }
+    else {
+      $lib_dir="/lib";
+    }
+  }
   ($header,$user_name)=split('\(',$user_name);	
   ($header,$group_name)=split('\(',$group_name);	
   $user_name=~s/\)//g;
   $group_name=~s/\)//g;
+  if ((-e "$spool_dir")&&($spool_dir=~/[A-z]/)) {
+    print "Cleaning up $spool_dir...\n";
+    system("cd $spool_dir ; rm -rf *");
+  }
 	if ($option{'B'}) {
 		if ($option{'p'}=~/rsa/) {
 			if ($user_name!~/root/) {
 				if (! -e "$spool_dir/uninstall_pam.sh") {
 					print "Execute the following commands as root and re-run scripr:\n";
-					print "mkdir -p $spool_dir/opt/pam\n";
-					print	"(cd /opt/pam ; tar -cpf - . )|( cd $spool_dir/opt/pam ; tar -xpf - )\n";
-					print "find /usr/lib -name \"*securid*\" |cpio -pdm $spool_dir\n";
-          print "find /etc -name sd_pam.conf |cpio -pdm $spool_dir\n";
-          print "find /var/ace -name sdconf.rec |cpio -pdm $spool_dir\n";
-					print "chown -R $user_name $spool_dir\n";
+					print "mkdir -p $ins_dir/opt/pam\n";
+					print	"(cd /opt/pam ; tar -cpf - . )|( cd $ins_dir/opt/pam ; tar -xpf - )\n";
+					print "find $lib_dir -name \"*securid*\" |cpio -pdm $ins_dir\n";
+          print "find /etc -name sd_pam.conf |cpio -pdm $ins_dir\n";
+          print "find /var/ace -name sdconf.rec |cpio -pdm $ins_dir\n";
+					print "chown -R $user_name $ins_dir\n";
 					exit;
 				}
 			}
 			else {
-				system("mkdir -p $spool_dir/opt/pam");
-				system("chown root:bin $spool_dir/opt/pam");
-				system("chmod 400 $spool_dir/opt/pam");
-				system("(cd /opt/pam ; tar -cpf - . )|( cd $spool_dir/opt/pam ; tar -xpf - )");
-				system("find /usr/lib -name \"*securid*\" |cpio -pdm $spool_dir");
-        system("find /etc -name sd_pam.conf |cpio -pdm $spool_dir");
-        system("find /var/ace -name sdconf.rec |cpio -pdm $spool_dir");
+				system("mkdir -p $ins_dir/opt/pam");
+				system("chown root:bin $ins_dir/opt/pam");
+				system("chmod 400 $ins_dir/opt/pam");
+				system("(cd /opt/pam ; tar -cpf - . )|( cd $ins_dir/opt/pam ; tar -xpf - )");
+				system("find $lib_dir -name \"*securid*\" |cpio -pdm $ins_dir");
+        system("find /etc -name sd_pam.conf |cpio -pdm $ins_dir");
+        system("find /var/ace -name sdconf.rec |cpio -pdm $ins_dir");
 			}
 		}
-	}
-	else {
-	  if ((-e "$spool_dir")&&($spool_dir=~/[A-z]/)) {
-	    print "Cleaning up $spool_dir...\n";
-	    system("cd $spool_dir ; rm -rf *");
-	  }
 	}
   $vendor_string="VENDOR=\"$vendor_string\"";	
   chomp($date_string);
@@ -1390,23 +1412,41 @@ sub create_spec {
   my $spec_file="$spec_dir/$option{'p'}.spec";
   my $arch_string=$os_arch;
   my @file_contents;
-  
+  my $ins_dir;
+  my $lib_dir;
+  my $file_name;
+  my @file_array;
+
+  if ($os_arch=~/64/) {
+    $lib_dir="/lib64";
+  }
+  else {
+    $lib_dir="/lib";
+  } 
+  $user_name=`whoami`;
+  chomp($user_name);
+  $ins_dir="$work_dir/BUILDROOT/$option{'n'}-$option{'v'}-1.$os_arch"; 
+  chomp($ins_dir);
   print_debug("Creating: $spec_file","long");
   open SPEC_FILE,">$spec_file";
-  print SPEC_FILE "Version:\t\t\t\t$option{'v'}\n";
-  print SPEC_FILE "Name:\t\t\t\t\t$option{'n'}\n";
+  print SPEC_FILE "Version:\t$option{'v'}\n";
+  print SPEC_FILE "Name:\t\t$option{'n'}\n";
   if ($option{'n'}=~/john/) {
     $option{'d'}="John the Ripper is a fast password cracker";
   }
   if ($option{'n'}=~/bsl/) {
     $option{'d'}="Bash compiled with syslog support";
   }
-  print SPEC_FILE "Summary:\t\t\t\t$option{'d'}\n";
-  print SPEC_FILE "Release:\t\t\t\t1\n";
-  print SPEC_FILE "Group:\t\t\t\t\t$option{'c'}\n";
-  print SPEC_FILE "Vendor:\t\t\t\t$vendor_string\n";
+  if ($option{'n'}) {
+   $option{'d'}="RSA SecurID PAM Agent";
+   $option{'u'}="http://www.rsa.com";
+  }
+  print SPEC_FILE "Summary:\t$option{'d'}\n";
+  print SPEC_FILE "Release:\t1\n";
+  print SPEC_FILE "Group:\t\t$option{'c'}\n";
+  print SPEC_FILE "Vendor:\t$vendor_string\n";
   print SPEC_FILE "Distribution:\t$pkg_base_name\n";
-  print SPEC_FILE "License:\t\t\t\t$option{'l'}\n";
+  print SPEC_FILE "License:\t$option{'l'}\n";
   if ($option{'n'}=~/john/) {
     $option{'u'}="http://www.openwall.com/john/";
     $option{'f'}="http://www.openwall.com/john/g/john-$option{'v'}.tar.gz"
@@ -1415,42 +1455,71 @@ sub create_spec {
     $option{'u'}="http://www.gnu.org/software/bash/";
     $option{'f'}="http://ftp.gnu.org/gnu/bash/bash-$option{'v'}.tar.gz"
   }
-  print SPEC_FILE "URL:\t\t\t\t\t\t$option{'u'}\n";
-  print SPEC_FILE "Source0:\t\t\t\t$option{'f'}\n";
-  if ($option{'n'}=~/bsl/) {
-    print SPEC_FILE "Source1:\t\t\t\thttps://raw.github.com/richardatlateralblast/bsl.postinstall/master/bsl.postinstall\n";
-    print SPEC_FILE "Source2:\t\t\t\thttps://raw.github.com/richardatlateralblast/bsl.preremove/master/bsl.preremove\n";
+  print SPEC_FILE "URL:\t\t$option{'u'}\n";
+  if (!$option{'B'}) {
+    print SPEC_FILE "Source0:\t$option{'f'}\n";
+    if ($option{'n'}=~/bsl/) {
+      print SPEC_FILE "Source1:\thttps://raw.github.com/richardatlateralblast/bsl.postinstall/master/bsl.postinstall\n";
+      print SPEC_FILE "Source2:\thttps://raw.github.com/richardatlateralblast/bsl.preremove/master/bsl.preremove\n";
+    }
+    if ($option{'n'}=~/bsl/) {
+      print SPEC_FILE "Patch1:\thttps://raw.github.com/richardatlateralblast/bash-4.2-bashhist.c.patch/master/bash-4.2-bashhist.c.patch\n";
+    }
+    print SPEC_FILE "BuildRoot:\t%{_tmppath}/%{name}-%{version}-%{release}\n";
   }
-  if ($option{'n'}=~/bsl/) {
-    print SPEC_FILE "Patch1:\t\t\t\thttps://raw.github.com/richardatlateralblast/bash-4.2-bashhist.c.patch/master/bash-4.2-bashhist.c.patch\n";
-  }
-  print SPEC_FILE "BuildRoot:\t\t\t%{_tmppath}/%{name}-%{version}-%{release}\n";
   print SPEC_FILE "\n";
   print SPEC_FILE "%description\n";
   print SPEC_FILE "$option{'d'}\n";
   print SPEC_FILE "\n";
-  print SPEC_FILE "%prep\n";
-  if ($option{'n'}=~/bsl/) {
-    print SPEC_FILE "%setup -q -n bash-%{version}\n";
+  if (!$option{'B'}) {
+    print SPEC_FILE "%prep\n";
+    if ($option{'n'}=~/bsl/) {
+      print SPEC_FILE "%setup -q -n bash-%{version}\n";
+    }
+    else {
+      print SPEC_FILE "%setup -q -n %{name}-%{version}\n";
+    }
+    print SPEC_FILE "\n";
+    print SPEC_FILE "%build\n";
+    if ($option{'n'}=~/john/) {
+      $arch_string=~s/_/-/g;
+      print SPEC_FILE "cd src ; make linux-$arch_string\n";
+    }
+    if ($option{'n'}=~/bsl/) {
+      print SPEC_FILE "patch -p0 < %{_topdir}/SOURCES/bash-%{version}-bashhist.c.patch\n";
+      print SPEC_FILE "./configure --prefix=/opt/%{distribution}\n";
+      print SPEC_FILE "sed -i 's,/\* #define SYSLOG_HISTORY \*/,#define SYSLOG_HISTORY,' config-top.h\n";
+      print SPEC_FILE "make all\n";
+    }
+    print SPEC_FILE "\n";
+    print SPEC_FILE "%install\n";
+    print SPEC_FILE "[ \"%{buildroot}\" != / ] && rm -rf \"%{buildroot}\"\n";
   }
-  else {
-    print SPEC_FILE "%setup -q -n %{name}-%{version}\n";
+  if ($option{'B'}) {
+    if ($option{'n'}=~/rsa/) {
+      if ($user_name!~/root/) {
+        if (! -e "$ins_dir/uninstall_pam.sh") {
+          print "Execute the following commands as root and re-run scripr:\n";
+          print "mkdir -p $ins_dir/opt/pam\n";
+          print "(cd /opt/pam ; tar -cpf - . )|( cd $ins_dir/opt/pam ; tar -xpf - )\n";
+          print "find /opt/pam |cpio -pdm $ins_dir\n";
+          print "find /etc -name sd_pam.conf \"*securid*\" |cpio -pdm $ins_dir\n";
+          print "find /var/ace -name stdconf.rec \"*securid*\" |cpio -pdm $ins_dir\n";
+          print "chown -R $user_name $ins_dir\n";
+          exit;
+        }
+      }
+      else {
+        system("mkdir -p $ins_dir/opt/pam");
+        system("chown root:bin $ins_dir/opt/pam");
+        system("chmod 400 $ins_dir/opt/pam");
+        system("find /opt/pam |cpio -pdm $ins_dir");
+        system("find $lib_dir -name \"*securid*\" |cpio -pdm $ins_dir");
+        system("find /etc -name sd_pam.conf |cpio -pdm $ins_dir");
+        system("find /var/ace -name sdconf.rec |cpio -pdm $ins_dir");
+      }
+    }
   }
-  print SPEC_FILE "\n";
-  print SPEC_FILE "%build\n";
-  if ($option{'n'}=~/john/) {
-    $arch_string=~s/_/-/g;
-    print SPEC_FILE "cd src ; make linux-$arch_string\n";
-  }
-  if ($option{'n'}=~/bsl/) {
-    print SPEC_FILE "patch -p0 < %{_topdir}/SOURCES/bash-%{version}-bashhist.c.patch\n";
-    print SPEC_FILE "./configure --prefix=/opt/%{distribution}\n";
-    print SPEC_FILE "sed -i 's,/\* #define SYSLOG_HISTORY \*/,#define SYSLOG_HISTORY,' config-top.h\n";
-    print SPEC_FILE "make all\n";
-  }
-  print SPEC_FILE "\n";
-  print SPEC_FILE "%install\n";
-  print SPEC_FILE "[ \"%{buildroot}\" != / ] && rm -rf \"%{buildroot}\"\n";
   if ($option{'n'}=~/bsl/) {
     print SPEC_FILE "make DESTDIR=%{buildroot} install\n";
     print SPEC_FILE "mkdir -p %{buildroot}/opt/%{distribution}/etc\n";
@@ -1466,7 +1535,15 @@ sub create_spec {
   print SPEC_FILE "\n";
   print SPEC_FILE "%files\n";
   print SPEC_FILE "%defattr(-,root,root)\n";
-  print SPEC_FILE "/opt/%{distribution}/*\n";
+  if ($option{'n'}=~/rsa/) {
+    @file_array=`cd $ins_dir ; find . -type f |sed 's/^\.//g'`;
+    foreach $file_name (@file_array) {
+      print SPEC_FILE "$file_name";
+    }
+  }
+  else {
+    print SPEC_FILE "/opt/%{distribution}/*\n";
+  }
   print SPEC_FILE "\n";
   if ($option{'n'}=~/bsl/) {
     print SPEC_FILE "%post\n";
