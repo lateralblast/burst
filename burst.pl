@@ -4,7 +4,7 @@ use Getopt::Std;
 use File::Basename;
 
 # Name:         burst (Build Unaided Rules Source Tool)
-# Version:      1.3.2
+# Version:      1.3.3
 # Release:      1
 # License:      Open Source
 # Group:        System
@@ -81,6 +81,8 @@ use File::Basename;
 #               Fixed package creation for RSA
 #               1.3.2 Thu 12 Sep 2013 08:29:20 EST
 #               Updated SPEC file creation
+#               1.3.3 Thu 12 Sep 2013 08:46:46 EST
+#               Improve RSA package creation on Solaris
 
 # This script creates solaris packages from a source package or directory (TBD)
 # Source packages are fetched into a source directory, unpacked, compiled
@@ -1112,6 +1114,17 @@ sub create_spool {
   }
   open PROTO_FILE,">$proto_file";
   print PROTO_FILE "i pkginfo=./pkginfo\n";
+  if ($option{'n'}=~/rsa/) {
+    print PROTO_FILE "1 d none opt/pam 0700 root bin\n";
+    print PROTO_FILE "1 d none opt/pam/bin 0700 root bin\n";
+    print PROTO_FILE "1 d none opt/pam/bin/32bit 0700 root bin\n";
+    print PROTO_FILE "1 d none opt/pam/bin/64bit 0700 root bin\n";
+    print PROTO_FILE "1 d none opt/pam/doc 0700 root bin\n";
+    print PROTO_FILE "1 d none opt/pam/lib 0700 root bin\n";
+    print PROTO_FILE "1 d none opt/pam/lib/32bit 0700 root bin\n";
+    print PROTO_FILE "1 d none opt/pam/lib/64bit 0700 root bin\n";
+    print PROTO_FILE "1 d none var/ace 0755 root sys\n";
+  }
   foreach $script_name (@script_names) {
     if (-e "$script_dir/$option{'n'}.$script_name") {
       system("cp $script_dir/$option{'n'}.$script_name $spool_dir/$script_name");
@@ -1339,7 +1352,17 @@ sub create_spool {
     }
   }
   close PROTO_FILE;
-  $command="cd $ins_dir ; find . -print |grep -v './pkginfo' |grep -v './prototype' |grep -v './postinstall' |grep -v './preremove' |grep -v './preinstall' |grep -v './postremove' |grep -v './checkinstall' |pkgproto | sed 's/$user_name $group_name/$dir_user $dir_group/g' >> $proto_file";
+  if ($option{'B'}) {
+    if ($option{'n'}=~/rsa/) {
+      $command="cd $ins_dir ; find . -type f -print |grep -v './pkginfo' |grep -v './prototype' |grep -v './postinstall' |grep -v './preremove' |grep -v './preinstall' |grep -v './postremove' |grep -v './checkinstall' |pkgproto | sed 's/$user_name $group_name/$dir_user $dir_group/g' >> $proto_file";
+    }
+    else {
+      $command="cd $ins_dir ; find . -print |grep -v './pkginfo' |grep -v './prototype' |grep -v './postinstall' |grep -v './preremove' |grep -v './preinstall' |grep -v './postremove' |grep -v './checkinstall' |pkgproto | sed 's/$user_name $group_name/$dir_user $dir_group/g' >> $proto_file";
+    }
+  }
+  else {
+    $command="cd $ins_dir ; find . -print |grep -v './pkginfo' |grep -v './prototype' |grep -v './postinstall' |grep -v './preremove' |grep -v './preinstall' |grep -v './postremove' |grep -v './checkinstall' |pkgproto | sed 's/$user_name $group_name/$dir_user $dir_group/g' >> $proto_file";
+  }
   print_debug("Executing: $command","long");
   system("$command");
   open INFO_FILE,">$info_file";
