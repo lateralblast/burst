@@ -4,7 +4,7 @@ use Getopt::Std;
 use File::Basename;
 
 # Name:         burst (Build Unaided Rules Source Tool)
-# Version:      1.3.3
+# Version:      1.3.4
 # Release:      1
 # License:      Open Source
 # Group:        System
@@ -82,7 +82,9 @@ use File::Basename;
 #               1.3.2 Thu 12 Sep 2013 08:29:20 EST
 #               Updated SPEC file creation
 #               1.3.3 Thu 12 Sep 2013 08:46:46 EST
-#               Improve RSA package creation on Solaris
+#               Improved RSA package creation on Solaris
+#               1.3.4 Thu 12 Sep 2013 09:06:58 EST
+#               Added post install script for RSA Solaris package
 
 # This script creates solaris packages from a source package or directory (TBD)
 # Source packages are fetched into a source directory, unpacked, compiled
@@ -1140,6 +1142,12 @@ sub create_spool {
     print POSTINSTALL_FILE "#!/bin/sh\n";
     open PREREMOVE_FILE,">$preremove_file";
     print PREREMOVE_FILE "#!/bin/sh\n";
+    if ($option{'n'}=~/rsa/) {
+      print POSTINSTALL_FILE "# Create /var/ace/sdopts.rec\n";
+      print POSTINSTALL_FILE "host_name=`hostname`\n";
+      print POSTINSTALL_FILE "host_ip=`host \$host_name |awk '{print \$4}'`\n";
+      print POSTINSTALL_FILE "echo \"CLIENT_IP=\$host_ip\" > /var/ace/sdopts.rec\n";
+    }
     if ($option{'n'}=~/bsl/) {
       print POSTINSTALL_FILE "# Create log file and fix permisions\n";
       print POSTINSTALL_FILE "touch /var/log/userlog\n";
