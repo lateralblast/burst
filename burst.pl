@@ -1134,7 +1134,7 @@ sub create_spool {
       print PROTO_FILE "i $script_name=./$script_name\n";
     }
   }
-  if ($option{'n'}=~/orca|openssh|bsl/) {
+  if ($option{'n'}=~/orca|openssh|bsl|rsa/) {
     # Add postinstall and preremove scripts to package
     print PROTO_FILE "i postinstall=./postinstall\n";
     print PROTO_FILE "i preremove=./preremove\n";
@@ -1143,6 +1143,9 @@ sub create_spool {
     open PREREMOVE_FILE,">$preremove_file";
     print PREREMOVE_FILE "#!/bin/sh\n";
     if ($option{'n'}=~/rsa/) {
+      print PREREMOVE_FILE "rm /var/ace/sdopts.rec\n";
+      print PREREMOVE_FILE "rm /var/ace/sdstatus*\n";
+      print PREREMOVE_FILE "rm /var/ace/securid\n";
       print POSTINSTALL_FILE "# Create /var/ace/sdopts.rec\n";
       print POSTINSTALL_FILE "host_name=`hostname`\n";
       print POSTINSTALL_FILE "host_ip=`host \$host_name |awk '{print \$4}'`\n";
@@ -1579,11 +1582,24 @@ sub create_spec {
   if ($option{'n'}=~/bsl/) {
     print SPEC_FILE "%post\n";
     print SPEC_FILE "/opt/%{distribution}/etc/$option{'n'}.postinstall\n";
-    print SPEC_FILE "/opt/%{distribution}/etc/$option{'n'}preremove\n";
+    print SPEC_FILE "/opt/%{distribution}/etc/$option{'n'}.preremove\n";
   }
   if ($option{'n'}=~/bsl/) {
     print SPEC_FILE "%preun\n";
     print SPEC_FILE "\n";
+    print SPEC_FILE "\n";
+  }
+  if ($option{'n'}=~/rsa/) {
+    print SPEC_FILE "%post\n";
+    print SPEC_FILE "rm /var/ace/sdopts.rec\n";
+    print SPEC_FILE "rm /var/ace/sdstatus*\n";
+    print SPEC_FILE "rm /var/ace/securid\n";
+    print SPEC_FILE "\n";
+    print SPEC_FILE "%preun\n";
+    print SPEC_FILE "# Create /var/ace/sdopts.rec\n";
+    print SPEC_FILE "host_name=`hostname`\n";
+    print SPEC_FILE "host_ip=`host \$host_name |awk '{print \$4}'`\n";
+    print SPEC_FILE "echo \"CLIENT_IP=\$host_ip\" > /var/ace/sdopts.rec\n";
     print SPEC_FILE "\n";
   }
   print SPEC_FILE "%changelog\n";
