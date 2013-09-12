@@ -4,7 +4,7 @@ use Getopt::Std;
 use File::Basename;
 
 # Name:         burst (Build Unaided Rules Source Tool)
-# Version:      1.3.4
+# Version:      1.3.6
 # Release:      1
 # License:      Open Source
 # Group:        System
@@ -14,77 +14,6 @@ use File::Basename;
 # Vendor:       UNIX
 # Packager:     Richard Spindler <richard@lateralblast.com.au>
 # Description:  Solaris package creation tool
-
-# Changes       1.0.0 Tuesday, 13 November 2012  3:50:45 AM EST
-#               Initial commit to github
-#               1.0.1 Tue 13 Nov 2012 14:43:13 EST
-#               Cleaned up code
-#               1.0.2 Tue Jan 22 15:28:41 EST 2013
-#               Fixed error with code
-#               1.0.3 Sun Jan 27 14:32:51 EST 2013
-#               A lot of updates including using DESTDIR
-#               1.0.4 Sun Jan 27 15:19:05 EST 2013
-#               Added postinstall and preremove scripts for setoolkit and orca
-#               1.0.5 Mon Jan 28 18:20:42 EST 2013
-#               Added server manifest for orcallator
-#               1.0.6 Tue 29 Jan 2013 21:32:41 EST
-#               Added support for wget and perl
-#               1.0.7 Wed Jan 30 08:15:38 EST 2013
-#               Added support for openssh and openssl
-#               1.0.8 Wed Jan 30 17:53:27 EST 2013
-#               Added code to download source and fixed openssl compilation
-#               1.0.9 Sun Feb 10 14:58:12 EST 2013
-#               Added support for john
-#               1.1.0 Sun Feb 10 15:04:52 EST 2013
-#               Updated package naming
-#               1.1.1 Fri 22 Feb 2013 11:58:24 EST
-#               Initial Linux support
-#               1.1.2 Fri Feb 22 15:04:22 EST 2013
-#               Added support for john rpm
-#               1.1.3 Sat Feb 23 10:44:33 EST 2013
-#               Added support for bash syslog rpm
-#               1.1.4 Sat Feb 23 17:01:18 EST 2013
-#               Cleaned up debug mode code
-#               1.1.5 Sun Feb 24 14:03:28 EST 2013
-#               Fixed bash-syslog RPM creatch
-#               1.1.6 Tuesday,  5 March 2013  7:59:10 PM EST
-#               Added GNU patch
-#               1.1.7 Tuesday,  5 March 2013  8:54:22 PM EST
-#               Added additional version detection code
-#               1.1.8 Tuesday,  5 March 2013 10:50:02 PM EST
-#               Added zlib
-#               1.1.9 Tuesday,  5 March 2013 11:04:24 PM EST
-#               Updated OpenSSL to 1.0.1e
-#               1.2.0 Wednesday,  6 March 2013 12:07:31 AM EST
-#               Fixed OpenSSH
-#               1.2.1 Wednesday,  6 March 2013 12:20:27 AM EST
-#               Fixed Configure flag
-#               1.2.2 Wednesday,  6 March 2013 12:55:23 AM EST
-#               Added HPN ssh support
-#               1.2.3 Wed  6 Mar 2013 16:11:45 EST
-#               Updated wget
-#               1.2.4 Wed  6 Mar 2013 16:30:27 EST
-#               Replaced tar with gtar to fix checksum errors
-#               1.2.5 Wed  6 Mar 2013 17:53:30 EST
-#               Fixed id resolution
-#               1.2.6 Thu  7 Mar 2013 08:55:33 EST
-#               Improved source version detection
-#               1.2.7 Thu  7 Mar 2013 10:23:05 EST
-#               Added package dependancies
-#               1.2.8 Thu  7 Mar 2013 15:48:03 EST
-#               Added support for multiple dependancies
-#               1.2.9 Wed 11 Sep 2013 13:42:29 EST
-#               Added support for creating RSA SecurID PAM package 
-#               1.3.0 Wed 11 Sep 2013 14:03:52 EST
-#               Added sdconf.rec and sd_pam.conf to RSA package
-#               1.3.1 Wed 11 Sep 2013 14:19:22 EST
-#               Fixed package creation for RSA
-#               1.3.2 Thu 12 Sep 2013 08:29:20 EST
-#               Updated SPEC file creation
-#               1.3.3 Thu 12 Sep 2013 08:46:46 EST
-#               Improved RSA package creation on Solaris
-#               1.3.4 Thu 12 Sep 2013 09:06:58 EST
-#               Added post install script for RSA Solaris package
 
 # This script creates solaris packages from a source package or directory (TBD)
 # Source packages are fetched into a source directory, unpacked, compiled
