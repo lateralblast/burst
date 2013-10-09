@@ -4,7 +4,7 @@ use Getopt::Std;
 use File::Basename;
 
 # Name:         burst (Build Unaided Rules Source Tool)
-# Version:      1.3.6
+# Version:      1.3.7
 # Release:      1
 # License:      Open Source
 # Group:        System
@@ -1077,8 +1077,10 @@ sub create_spool {
       print PREREMOVE_FILE "rm /var/ace/securid\n";
       print POSTINSTALL_FILE "# Create /var/ace/sdopts.rec\n";
       print POSTINSTALL_FILE "host_name=`hostname`\n";
-      print POSTINSTALL_FILE "host_ip=`host \$host_name |awk '{print \$4}'`\n";
+      print POSTINSTALL_FILE "host_ip=`/usr/sbin/host \$host_name |awk '{print \$4}'`\n";
       print POSTINSTALL_FILE "echo \"CLIENT_IP=\$host_ip\" > /var/ace/sdopts.rec\n";
+      print POSTINSTALL_FILE "chmod 640 /var/ace/sdopts.rec\n";
+      print POSTINSTALL_FILE "chown root:root /var/ace/sdopts.rec\n";
     }
     if ($option{'n'}=~/bsl/) {
       print POSTINSTALL_FILE "# Create log file and fix permisions\n";

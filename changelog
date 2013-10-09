@@ -73,3 +73,5 @@
 # Added prerun and post to RSA SPEC file creation
 # 1.3.6 Thu 12 Sep 2013 11:25:10 EST
 # Moved changelog into a separate file
+# 1.3.7 Wed  9 Oct 2013 15:26:41 EST
+# Fixed post install script for RSA on Solaris
