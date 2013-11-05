@@ -4,7 +4,7 @@ use Getopt::Std;
 use File::Basename;
 
 # Name:         burst (Build Unaided Rules Source Tool)
-# Version:      1.3.7
+# Version:      1.3.8
 # Release:      1
 # License:      Open Source
 # Group:        System
@@ -36,7 +36,7 @@ use File::Basename;
 # preremove, etc
 #
 # If the package name and version are not given it will try to determine
-# them from the source file name, and vice versa, if no source name is 
+# them from the source file name, and vice versa, if no source name is
 # give it will try to determine the source file name from the given
 # version and name and see if it is present in the BASE/src directory
 #
@@ -46,12 +46,12 @@ use File::Basename;
 #
 # For example if given:
 # -s setoolkit-3.5.1.[tar,tar.gz,tgz]
-# The script will determine the package name is setoolkit 
+# The script will determine the package name is setoolkit
 # and the version is 3.5.1
 #
 # Similarly if not given a Solaris package name (-p switch) the script
 # will deduce the Solaris Package name from the source name
-# for example setoolkit will be packages as OSSsetoolkit 
+# for example setoolkit will be packages as OSSsetoolkit
 # If the release of the OS the package is being built on is less than 5.9
 # the package name will be truncated to 7 letters so it is compatible
 #
@@ -126,10 +126,10 @@ if ($option{'V'}) {
 sub print_usage {
   print "\n";
   print "Usage:\n";
-  print "$script_name -[$options]\n"; 
+  print "$script_name -[$options]\n";
   print "\n";
   print "-h: Display help\n";
-  print "-w: Working (base) directory\n"; 
+  print "-w: Working (base) directory\n";
   print "-n: Source name\n";
   print "-p: Package name\n";
   print "-s: Source file\n";
@@ -163,10 +163,10 @@ sub get_script_version {
 
 check_env();
 if ($os_name=~/SunOS/) {
-	if (!$option{'B'}) {
-	  extract_source();
-		compile_source();
-	}
+  if (!$option{'B'}) {
+    extract_source();
+    compile_source();
+  }
   create_spool();
   create_trans();
   create_pkg();
@@ -185,7 +185,7 @@ if ($os_name=~/Linux/) {
 sub check_env {
 
   my $home_dir=`echo \$HOME`;
-  my @dir_names; 
+  my @dir_names;
   my $dir_name;
   my $pam_lib;
 
@@ -229,9 +229,9 @@ sub check_env {
     # if -i used, set real_install_dir from command line
     $real_install_dir=$option{'i'};
   }
-	if ($option{'B'}) {
-		$real_install_dir="/";
-	}
+  if ($option{'B'}) {
+    $real_install_dir="/";
+  }
   print "Setting package install directory to: $real_install_dir\n";
   if (!$option{'a'}) {
     # If the architecture is not specified, get it
@@ -312,9 +312,9 @@ sub check_env {
     }
   }
   if (!$option{'s'}) {
-		if ($option{'n'}=~/rsa/) {
-			if ($os_name=~/SunOS/) {
-				$pam_lib="/usr/lib/security/sparcv9/pam_securid.so";
+    if ($option{'n'}=~/rsa/) {
+      if ($os_name=~/SunOS/) {
+        $pam_lib="/usr/lib/security/sparcv9/pam_securid.so";
       }
       else {
         if ($os_arch=~/64/) {
@@ -324,26 +324,26 @@ sub check_env {
           $pam_lib="/lib/security/pam_securid.so"
         }
       }
-			if (! -e "$pam_lib") {
-				print "RSA SecurID PAM Agent is not installed\n";
-				print "Install agent and re-run script\n";
-				exit;
-			}
-			else {
-				$option{'v'}=`strings $pam_lib |grep 'API Version' |awk '{print \$5"."\$6"."\$7}'`;
-				chomp($option{'v'});
-				$option{'v'}=~s/ //g;
-				$option{'v'}=~s/_/./g;
-				$option{'v'}=~s/\[//g;
-				$option{'v'}=~s/\]//g;
-			}
-		}
+      if (! -e "$pam_lib") {
+        print "RSA SecurID PAM Agent is not installed\n";
+        print "Install agent and re-run script\n";
+        exit;
+      }
+      else {
+        $option{'v'}=`strings $pam_lib |grep 'API Version' |awk '{print \$5"."\$6"."\$7}'`;
+        chomp($option{'v'});
+        $option{'v'}=~s/ //g;
+        $option{'v'}=~s/_/./g;
+        $option{'v'}=~s/\[//g;
+        $option{'v'}=~s/\]//g;
+      }
+    }
     if (($option{'n'})&&(!$option{'v'})) {
       get_source_version();
       determine_source_file_name();
     }
     if ((!$option{'n'})||(!$option{'v'})) {
-      # If the source file, version and name have not been given 
+      # If the source file, version and name have not been given
       # exit as there is not enough information to continue
       if (!$option{'C'}) {
         print "You must either specify the source file and/or the package name and version\n";
@@ -354,22 +354,22 @@ sub check_env {
       # If not given a source file name, try to determine it
       # from other information given, eg -n and -v
       # If the source file does not exist then exit
-			if (!$option{'B'}) {
-	      determine_source_file_name();
-	      if ($option{'s'}!~/[0-9]/) {
-	        exit;
-	      }
-			}
-			else {
-				if (!$option{'c'}) {
-					$option{'c'}="Application";
-				}
-			}
+      if (!$option{'B'}) {
+        determine_source_file_name();
+        if ($option{'s'}!~/[0-9]/) {
+          exit;
+        }
+      }
+      else {
+        if (!$option{'c'}) {
+          $option{'c'}="Application";
+        }
+      }
     }
- 	} 
+  }
   else {
     if (!-e "$option{'s'}") {
-			
+
       # If the source file given via -s does not exist
       # then try to guess it via -v and -n
       # If the source file does not exist then exit
@@ -389,7 +389,7 @@ sub check_env {
         ($source_file_name,$source_dir_name)=fileparse($option{'s'});
         if ($source_file_name!~/\-/) {
           if ((!$option{'p'})||(!$option{'v'})) {
-            print "Sourcefile $source_file_name does not appear a standardly named source file and the name and version have not been given\n"; 
+            print "Sourcefile $source_file_name does not appear a standardly named source file and the name and version have not been given\n";
             exit;
           }
         }
@@ -411,17 +411,17 @@ sub check_env {
     ($source_file_name,$source_dir_name)=fileparse($option{'s'});
     if ($source_file_name!~/\-/) {
       if ((!$option{'p'})||(!$option{'v'})) {
-        print "Sourcefile $source_file_name does not appear a standardly named source file and the name and version have not been given\n"; 
+        print "Sourcefile $source_file_name does not appear a standardly named source file and the name and version have not been given\n";
         exit;
       }
     }
     else {
-			if (!$option{'B'}) {
-	      ($option{'n'},$option{'v'})=split('\-',$source_file_name);
-	      $option{'v'}=~s/\.tar\.gz//g;
-	      $option{'v'}=~s/\.tar//g;
-	      $option{'v'}=~s/\.tgz//g;
-			}
+      if (!$option{'B'}) {
+        ($option{'n'},$option{'v'})=split('\-',$source_file_name);
+        $option{'v'}=~s/\.tar\.gz//g;
+        $option{'v'}=~s/\.tar//g;
+        $option{'v'}=~s/\.tgz//g;
+      }
     }
   }
   if (!$option{'p'}) {
@@ -443,11 +443,11 @@ sub check_env {
   }
   print_debug("","short");
   print_debug("Work dir:       $work_dir","short");
-	if (!$option{'B'}) {
-  	print_debug("Source file:    $option{'s'}","short");
-  	print_debug("Source name:    $option{'n'}","short");
-	  print_debug("Source version: $option{'v'}","short");
-	}
+  if (!$option{'B'}) {
+    print_debug("Source file:    $option{'s'}","short");
+    print_debug("Source name:    $option{'n'}","short");
+    print_debug("Source version: $option{'v'}","short");
+  }
   print_debug("Package name:   $option{'p'}","short");
   if (!$option{'e'}) {
     if ($maintainer_email!~/[a-z]/) {
@@ -459,11 +459,11 @@ sub check_env {
 }
 
 sub remove_extensions {
-  my @extensions; 
+  my @extensions;
   my $counter=0;
   my $file_name=$_[0];
   my $extension;
-  
+
   $extensions[$counter]=".tgz"; $counter++;
   $extensions[$counter]=".tar.gz"; $counter++;
   $extensions[$counter]=".tar.bz2"; $counter++;
@@ -477,10 +477,10 @@ sub remove_extensions {
 
 sub determine_source_file_name {
 
-  my @extensions; 
-  my $record; 
+  my @extensions;
+  my $record;
   my $counter;
-  my $file_name_base; 
+  my $file_name_base;
   my $src_dir;
 
   if ($os_name=~/SunOS/) {
@@ -508,7 +508,7 @@ sub determine_source_file_name {
   }
   for ($counter=0; $counter<@extensions; $counter++) {
     if ($option{"D"}) {
-      print "Seeing if $file_name_base.$extensions[$counter] exists\n"; 
+      print "Seeing if $file_name_base.$extensions[$counter] exists\n";
     }
     if (-e "$file_name_base.$extensions[$counter]") {
       $option{'s'}="$file_name_base.$extensions[$counter]";
@@ -523,17 +523,17 @@ sub determine_source_file_name {
 }
 
 sub check_deps {
-  my @dep_list; 
+  my @dep_list;
   my $counter=0;
-  my $record; 
-  my $dep; 
+  my $record;
+  my $dep;
   my $package;
-  my $pkg_check; 
+  my $pkg_check;
   my @new_dep_list;
-  
+
   $dep_list[$counter]="ruby,yaml:readline:libffi"; $counter++;
   $dep_list[$counter]="ssh,ssl"; $counter++;
-  
+
   foreach $record (@dep_list) {
     ($package,$dep)=split(",",$record);
     if ($option{'n'}=~/$package/) {
@@ -566,8 +566,8 @@ sub check_deps {
 }
 
 sub populate_source_list {
-  
-  my @source_list; 
+
+  my @source_list;
   my $counter=0;
   my $package_name=$option{'n'};
 
@@ -600,10 +600,10 @@ sub populate_source_list {
 }
 
 sub get_source_version {
-  
-  my @source_list; 
+
+  my @source_list;
   my $counter=0;
-  my $source_url; 
+  my $source_url;
   my $header;
 
   @source_list=populate_source_list();
@@ -620,20 +620,20 @@ sub get_source_version {
 }
 
 sub get_source_file {
-  
-  my @source_list; 
+
+  my @source_list;
   my $counter=0;
-  my $source_url; 
-  my $command; 
-  my $src_dir; 
+  my $source_url;
+  my $command;
+  my $src_dir;
   my $wget_test;
-  
+
   if ($os_name=~/SunOS/) {
     $src_dir="$work_dir/src";
   }
   if ($os_name=~/Linux/) {
     $src_dir="$work_dir/SOURCES"
-  } 
+  }
   @source_list=populate_source_list();
   foreach $source_url (@source_list) {
     if ($source_url=~/$option{'n'}-$option{'v'}/) {
@@ -653,11 +653,11 @@ sub get_source_file {
 
 sub extract_source {
 
-  my $file_type; 
+  my $file_type;
   my $command;
-  
+
   determine_source_dir_name();
-  
+
   if ($source_dir_name!~/src\/$/) {
     $command="rm -rf $source_dir_name";
     print_debug("Executing: $command","long");
@@ -698,13 +698,13 @@ sub determine_source_dir_name {
 
 sub search_conf_list {
 
-  my @commands; 
+  my @commands;
   my $counter=0;
-  my $command; 
+  my $command;
   my $record;
-  my $package; 
+  my $package;
   my $conf_string;
-  
+
   $commands[$counter]="wget,CC=\"cc\" ; export CC ; ./configure --prefix=$real_install_dir --with-ssl=openssl --with-libssl-prefix=$real_install_dir"; $counter++;
   $commands[$counter]="openssl,CC=\"cc\" ; export CC ; ./Configure --prefix=$real_install_dir --openssldir=$real_install_dir zlib-dynamic threads shared solaris-x86-cc"; $counter++;
   $commands[$counter]="sudo,CC=\"cc\" ; export CC ; ./configure --prefix=$real_install_dir --enable-pam"; $counter++;
@@ -739,19 +739,19 @@ sub search_conf_list {
 
 sub compile_source {
 
-  my @commands; 
+  my @commands;
   my $command;
   my $ins_dir="$work_dir/ins";
   my $src_dir="$work_dir/src";
-  my $conf_string; 
+  my $conf_string;
   my $counter=0;
-  my @files; 
-  my $file; 
+  my @files;
+  my $file;
   my $se_version;
   my $ins_pkg_dir="$ins_dir$real_install_dir";
-  my $patch_file; 
+  my $patch_file;
   my $config_flag=0;
-  
+
   # Reminder:
   # ins_dir = Root of work directory, eg /export/home/user/burst/ins
   # This is the directory that DESTDIR will be give to simulate installing into /
@@ -838,75 +838,75 @@ sub compile_source {
     $commands[$counter]="cp $ins_pkg_dir/bin/start_orca_services $ins_pkg_dir/bin/start_orca_services.orig"; $counter++;
     $commands[$counter]="cat $ins_pkg_dir/bin/start_orca_services.orig |sed 's,^\$CAT=.*,\$CAT=/bin/cat,' > $ins_pkg_dir/bin/start_orca_services"; $counter++;
     $commands[$counter]="rm $ins_pkg_dir/bin/start_orca_services.orig"; $counter++;
-    
+
     $commands[$counter]="cp $ins_pkg_dir/bin/start_orca_services $ins_pkg_dir/bin/start_orca_services.orig"; $counter++;
     $commands[$counter]="cat $ins_pkg_dir/bin/start_orca_services.orig |sed 's,^\$ECHO=.*,\$ECHO=/bin/echo,' > $ins_pkg_dir/bin/start_orca_services"; $counter++;
     $commands[$counter]="rm $ins_pkg_dir/bin/start_orca_services.orig"; $counter++;
-     
+
     $commands[$counter]="cp $ins_pkg_dir/bin/start_orca_services $ins_pkg_dir/bin/start_orca_services.orig"; $counter++;
     $commands[$counter]="cat $ins_pkg_dir/bin/start_orca_services.orig |sed 's,^\$TOUCH=.*,\$TOUCH=/bin/touch,' > $ins_pkg_dir/bin/start_orca_services"; $counter++;
-    $commands[$counter]="rm $ins_pkg_dir/bin/start_orca_services.orig"; $counter++; 
-    
+    $commands[$counter]="rm $ins_pkg_dir/bin/start_orca_services.orig"; $counter++;
+
     # Fix up location of SE
-    
+
     $commands[$counter]="cp $ins_pkg_dir/bin/start_orcallator $ins_pkg_dir/bin/start_orcallator.orig"; $counter++;
     $commands[$counter]="cat $ins_pkg_dir/bin/start_orcallator.orig |sed 's,^SE=.*,SE=$real_install_dir/bin/se,' > $ins_pkg_dir/bin/start_orcallator"; $counter++;
     $commands[$counter]="rm $ins_pkg_dir/bin/start_orcallator.orig"; $counter++;
-    
+
     $commands[$counter]="cp $ins_pkg_dir/bin/start_orcallator $ins_pkg_dir/bin/start_orcallator.orig"; $counter++;
     $commands[$counter]="cat $ins_pkg_dir/bin/start_orcallator.orig |sed 's,\$libdir/orcallator,$real_install_dir/share/setoolkit/orcallator/orcallator,' > $ins_pkg_dir/bin/start_orcallator"; $counter++;
     $commands[$counter]="rm $ins_pkg_dir/bin/start_orcallator.orig"; $counter++;
-    
+
     # Fix configuration files
-    
+
     $commands[$counter]="cp $ins_pkg_dir/etc/orca_services.cfg $ins_pkg_dir/etc/orca_services.cfg.orig"; $counter++;
     $commands[$counter]="cat $ins_pkg_dir/etc/orca_services.cfg.orig |sed 's,$real_install_dir/orca,/var/orca,' > $ins_pkg_dir/etc/orca_services.cfg"; $counter++;
     $commands[$counter]="rm $ins_pkg_dir/etc/orca_services.cfg.orig"; $counter++;
-    
+
     $commands[$counter]="cp $ins_pkg_dir/etc/orca_services.cfg $ins_pkg_dir/etc/orca_services.cfg.orig"; $counter++;
     $commands[$counter]="cat $ins_pkg_dir/etc/orca_services.cfg.orig |sed 's,/var/orca/var,/var/orca,' > $ins_pkg_dir/etc/orca_services.cfg"; $counter++;
     $commands[$counter]="rm $ins_pkg_dir/etc/orca_services.cfg.orig"; $counter++;
-    
+
     $commands[$counter]="cp $ins_pkg_dir/etc/orcallator.cfg $ins_pkg_dir/etc/orcallator.cfg.orig"; $counter++;
     $commands[$counter]="cat $ins_pkg_dir/etc/orcallator.cfg.orig |sed 's,$real_install_dir/orca,/var/orca,' > $ins_pkg_dir/etc/orcallator.cfg"; $counter++;
     $commands[$counter]="rm $ins_pkg_dir/etc/orcallator.cfg.orig"; $counter++;
-    
+
     $commands[$counter]="cp $ins_pkg_dir/etc/orcallator.cfg $ins_pkg_dir/etc/orcallator.cfg.orig"; $counter++;
     $commands[$counter]="cat $ins_pkg_dir/etc/orcallator.cfg.orig |sed 's,/var/orca/var,/var/orca,' > $ins_pkg_dir/etc/orcallator.cfg"; $counter++;
     $commands[$counter]="rm $ins_pkg_dir/etc/orcallator.cfg.orig"; $counter++;
-    
+
     $commands[$counter]="cp $ins_pkg_dir/etc/orcallator.cfg $ins_pkg_dir/etc/orcallator.cfg.orig"; $counter++;
     $commands[$counter]="cat $ins_pkg_dir/etc/orcallator.cfg.orig |sed 's,/orcallator\$,,' > $ins_pkg_dir/etc/orcallator.cfg"; $counter++;
     $commands[$counter]="rm $ins_pkg_dir/etc/orcallator.cfg.orig"; $counter++;
-    
+
     $commands[$counter]="cp $ins_pkg_dir/etc/procallator.cfg $ins_pkg_dir/etc/procallator.cfg.orig"; $counter++;
     $commands[$counter]="cat $ins_pkg_dir/etc/procallator.cfg.orig |sed 's,$real_install_dir/orca,/var,' > $ins_pkg_dir/etc/procallator.cfg"; $counter++;
     $commands[$counter]="rm $ins_pkg_dir/etc/procallator.cfg.orig"; $counter++;
-    
+
     $commands[$counter]="cp $ins_pkg_dir/etc/procallator.cfg $ins_pkg_dir/etc/procallator.cfg.orig"; $counter++;
     $commands[$counter]="cat $ins_pkg_dir/etc/procallator.cfg.orig |sed 's,/var/orca/var,/var/orca,' > $ins_pkg_dir/etc/procallator.cfg"; $counter++;
     $commands[$counter]="rm $ins_pkg_dir/etc/procallator.cfg.orig"; $counter++;
-    
+
     $commands[$counter]="cp $ins_pkg_dir/etc/winallator.cfg $ins_pkg_dir/etc/winallator.cfg.orig"; $counter++;
     $commands[$counter]="cat $ins_pkg_dir/etc/winallator.cfg.orig |sed 's,$real_install_dir/orca,/var,' > $ins_pkg_dir/etc/winallator.cfg"; $counter++;
     $commands[$counter]="rm $ins_pkg_dir/etc/winallator.cfg.orig"; $counter++;
-    
+
     $commands[$counter]="cp $ins_pkg_dir/etc/winallator.cfg $ins_pkg_dir/etc/winallator.cfg.orig"; $counter++;
     $commands[$counter]="cat $ins_pkg_dir/etc/winallator.cfg.orig |sed 's,/var/orca/var,/var/orca,' > $ins_pkg_dir/etc/winallator.cfg"; $counter++;
     $commands[$counter]="rm $ins_pkg_dir/etc/winallator.cfg.orig"; $counter++;
-    
+
     $commands[$counter]="cp $ins_pkg_dir/bin/orca_services_running $ins_pkg_dir/bin/orca_services_running.orig"; $counter++;
     $commands[$counter]="cat $ins_pkg_dir/bin/orca_services_running.orig |sed 's,$real_install_dir/orca/var,/var/orca,' > $ins_pkg_dir/bin/orca_services_running"; $counter++;
     $commands[$counter]="rm $ins_pkg_dir/bin/orca_services_running.orig"; $counter++;
-    
+
     $commands[$counter]="cp $ins_pkg_dir/bin/orcallator_running $ins_pkg_dir/bin/orcallator_running.orig"; $counter++;
     $commands[$counter]="cat $ins_pkg_dir/bin/orcallator_running.orig |sed 's,$real_install_dir/orca/var/orcallator,/var/orca,' > $ins_pkg_dir/bin/orcallator_running"; $counter++;
     $commands[$counter]="rm $ins_pkg_dir/bin/orcallator_running.orig"; $counter++;
-    
+
     $commands[$counter]="cp $ins_pkg_dir/bin/start_orca_services $ins_pkg_dir/bin/start_orca_services.orig"; $counter++;
     $commands[$counter]="cat $ins_pkg_dir/bin/start_orca_services.orig |sed 's,$real_install_dir/orca/var,/var/orca,' > $ins_pkg_dir/bin/start_orca_services"; $counter++;
     $commands[$counter]="rm $ins_pkg_dir/bin/start_orca_services.orig"; $counter++;
-    
+
     $commands[$counter]="cp $ins_pkg_dir/bin/start_orcallator $ins_pkg_dir/bin/start_orcallator.orig"; $counter++;
     $commands[$counter]="cat $ins_pkg_dir/bin/start_orcallator.orig |sed 's,$real_install_dir/orca/var/orcallator,/var/orca,' > $ins_pkg_dir/bin/start_orcallator"; $counter++;
     $commands[$counter]="rm $ins_pkg_dir/bin/start_orcallator.orig"; $counter++;
@@ -957,17 +957,17 @@ sub create_spool {
   my $pstamp_string="PSTAMP=\"\"";
   my $classes_string="CLASSES=\"none\"";
   my $basedir_string="BASEDIR=\"/\"";
-  my $version_string; 
+  my $version_string;
   my $user_info=`id`;
   my @values=split(" ",$user_info);
   my $user_name=$values[0];
   my $group_name=$values[1];
-  my $header; 
+  my $header;
   my $init_file;
   my $postinstall_file="$ins_dir/postinstall";
   my $preremove_file="$ins_dir/preremove";
-  my @file_contents; 
-  my $script_name; 
+  my @file_contents;
+  my $script_name;
   my $command;
   my @script_names=('preinstall','postinstall','preremove','postremove','checkinstall');
   my $lib_dir;
@@ -980,7 +980,7 @@ sub create_spool {
   # Out of politeness it would be good to direct configs to $ins_pkg_dir/etc (/usr/local/etc)
   # rather than $ins_dir/etc (/etc) so the package keeps things away from the system
   # as much as possible
-  
+
   # If there are any package specific scripts copy them into the spool directory
 
   if ($os_name=~/SunOS/) {
@@ -994,40 +994,40 @@ sub create_spool {
       $lib_dir="/lib";
     }
   }
-  ($header,$user_name)=split('\(',$user_name);	
-  ($header,$group_name)=split('\(',$group_name);	
+  ($header,$user_name)=split('\(',$user_name);
+  ($header,$group_name)=split('\(',$group_name);
   $user_name=~s/\)//g;
   $group_name=~s/\)//g;
   if ((-e "$spool_dir")&&($spool_dir=~/[A-z]/)) {
     print "Cleaning up $spool_dir...\n";
     system("cd $spool_dir ; rm -rf *");
   }
-	if ($option{'B'}) {
-		if ($option{'p'}=~/rsa/) {
-			if ($user_name!~/root/) {
-				if (! -e "$spool_dir/uninstall_pam.sh") {
-					print "Execute the following commands as root and re-run scripr:\n";
-					print "mkdir -p $ins_dir/opt/pam\n";
-					print	"(cd /opt/pam ; tar -cpf - . )|( cd $ins_dir/opt/pam ; tar -xpf - )\n";
-					print "find $lib_dir -name \"*securid*\" |cpio -pdm $ins_dir\n";
+  if ($option{'B'}) {
+    if ($option{'p'}=~/rsa/) {
+      if ($user_name!~/root/) {
+        if (! -e "$spool_dir/uninstall_pam.sh") {
+          print "Execute the following commands as root and re-run scripr:\n";
+          print "mkdir -p $ins_dir/opt/pam\n";
+          print "(cd /opt/pam ; tar -cpf - . )|( cd $ins_dir/opt/pam ; tar -xpf - )\n";
+          print "find $lib_dir -name \"*securid*\" |cpio -pdm $ins_dir\n";
           print "find /etc -name sd_pam.conf |cpio -pdm $ins_dir\n";
           print "find /var/ace -name sdconf.rec |cpio -pdm $ins_dir\n";
-					print "chown -R $user_name $ins_dir\n";
-					exit;
-				}
-			}
-			else {
-				system("mkdir -p $ins_dir/opt/pam");
-				system("chown root:bin $ins_dir/opt/pam");
-				system("chmod 400 $ins_dir/opt/pam");
-				system("(cd /opt/pam ; tar -cpf - . )|( cd $ins_dir/opt/pam ; tar -xpf - )");
-				system("find $lib_dir -name \"*securid*\" |cpio -pdm $ins_dir");
+          print "chown -R $user_name $ins_dir\n";
+          exit;
+        }
+      }
+      else {
+        system("mkdir -p $ins_dir/opt/pam");
+        system("chown root:bin $ins_dir/opt/pam");
+        system("chmod 400 $ins_dir/opt/pam");
+        system("(cd /opt/pam ; tar -cpf - . )|( cd $ins_dir/opt/pam ; tar -xpf - )");
+        system("find $lib_dir -name \"*securid*\" |cpio -pdm $ins_dir");
         system("find /etc -name sd_pam.conf |cpio -pdm $ins_dir");
         system("find /var/ace -name sdconf.rec |cpio -pdm $ins_dir");
-			}
-		}
-	}
-  $vendor_string="VENDOR=\"$vendor_string\"";	
+      }
+    }
+  }
+  $vendor_string="VENDOR=\"$vendor_string\"";
   chomp($date_string);
   $version_string="VERSION=\"$option{'v'},REV=$date_string\"";
   if ($option{'D'}) {
@@ -1154,8 +1154,8 @@ sub create_spool {
       print POSTINSTALL_FILE "ln -s $real_install_dir/lib/SE/3.4 $real_install_dir/lib/SE/3.5.1\n";
       system("mkdir -p $ins_pkg_dir/etc");
     }
-    if ($option{'r'}=~/10/) { 
-      # If on Solaris 10 create client manifest 
+    if ($option{'r'}=~/10/) {
+      # If on Solaris 10 create client manifest
       # and get postinstall script to install it
       if ($option{'n'}=~/orca/) {
         $init_file="$ins_pkg_dir/etc/$option{'n'}-client.xml";
@@ -1172,7 +1172,7 @@ sub create_spool {
         print INIT_FILE "</service_bundle>\n";
         close INIT_FILE;
       }
-      # If on Solaris 10 create server manifest 
+      # If on Solaris 10 create server manifest
       # and get postinstall script to install it
       if ($option{'n'}=~/orca|openssh/) {
         $init_file="$ins_pkg_dir/etc/$option{'n'}-server.xml";
@@ -1208,7 +1208,7 @@ sub create_spool {
       }
     }
     else {
-      # If not on Solaris 10 create standard init script 
+      # If not on Solaris 10 create standard init script
       # and get postinstall script to install it
       if ($option{'n'}=~/orca|openssh/) {
         $init_file="$ins_pkg_dir/etc/$option{'n'}.init";
@@ -1263,7 +1263,7 @@ sub create_spool {
         close INIT_FILE;
       }
     }
-    if ($option{'n'}=~/orca/) { 
+    if ($option{'n'}=~/orca/) {
       print PREREMOVE_FILE "rm $real_install_dir/lib/SE/3.5.1\n";
     }
     close POSTINSTALL_FILE;
@@ -1329,9 +1329,9 @@ sub create_trans {
   my $trans_dir="$work_dir/trans";
   my $spool_dir="$work_dir/spool";
   my $proto_file="$ins_dir/prototype";
-  my @prototype; 
+  my @prototype;
   my $command;
-	my $file_name;
+  my $file_name;
 
   if ((-e "$trans_dir")&&($trans_dir=~/[A-z]/)) {
     print "Cleaning up $trans_dir...\n";
@@ -1340,10 +1340,10 @@ sub create_trans {
   $command="cd $ins_dir ; pkgmk -o -r . -d $spool_dir -f $proto_file";
   print_debug("Prototype file contents:","long");
   @prototype=`cat $proto_file`;
-	foreach $file_name (@prototype) {
-		chomp($file_name);
-	  print_debug("$file_name","normal");
-	}
+  foreach $file_name (@prototype) {
+    chomp($file_name);
+    print_debug("$file_name","normal");
+  }
   print_debug("Executing: $command","long");
   system("$command");
   return;
@@ -1352,14 +1352,14 @@ sub create_trans {
 # Process transfer package into actual package
 
 sub create_pkg {
-  
+
   my $spool_dir="$work_dir/spool";
   my $trans_dir="$work_dir/trans";
   my $pkg_dir="$work_dir/pkg";
   my $pkg_string="$option{'p'}";
   my $hpn_string=$pkg_string;
-  my $command; 
-  
+  my $command;
+
   if ($hpnssh eq 1) {
     $hpn_string=~s/ssh/hpnssh/g;
     $command="cd $spool_dir ; pkgtrans $spool_dir $pkg_dir/$hpn_string-$option{'v'}-$option{'a'}-sol$option{'r'}.pkg $pkg_string";
@@ -1387,10 +1387,10 @@ sub create_spec {
   }
   else {
     $lib_dir="/lib";
-  } 
+  }
   $user_name=`whoami`;
   chomp($user_name);
-  $ins_dir="$work_dir/BUILDROOT/$option{'n'}-$option{'v'}-1.$os_arch"; 
+  $ins_dir="$work_dir/BUILDROOT/$option{'n'}-$option{'v'}-1.$os_arch";
   chomp($ins_dir);
   print_debug("Creating: $spec_file","long");
   open SPEC_FILE,">$spec_file";
@@ -1540,14 +1540,14 @@ sub create_spec {
   print_debug(" @file_contents","long");
   close SPEC_FILE;
   return;
-  
+
 }
 
 sub print_debug {
-  
+
   my $string=$_[0];
   my $style=$_[1];
-  
+
   if ($option{'D'}) {
     if ($style!~/[A-z]/) {
       $style="normal";
@@ -1563,17 +1563,17 @@ sub print_debug {
     }
   }
   return;
-  
+
 }
 
 sub create_rpm {
-  
+
   my $spec_dir="$work_dir/SPECS";
   my $spec_file="$spec_dir/$option{'p'}.spec";
   my $command="rpmbuild -ba --define \"_topdir $work_dir\" $spec_file";
-  
+
   print_debug("Executing: $command","long");
   system("$command");
   return;
-  
+
 }
