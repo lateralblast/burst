@@ -143,7 +143,7 @@ sub print_usage {
   print "-B: Create a package from a binary install (eg SecurID PAM Agent)\n";
   print "\n";
   print "Example:\n";
-  print "$script_name -d /tmp/$script_name -s /tmp/setoolkit-3.5.1.tar -p $pkg_base_name";
+  print "$script_name -d /tmp/$script_name -s /tmp/setoolkit-3.5.1.tar -p BLAHse";
   print "\n";
   print "\n";
   return;
@@ -151,7 +151,7 @@ sub print_usage {
 
 sub print_version {
   my $script_version=get_script_version();
-  print "$script_version\n"
+  print "$script_version\n";
   return;
 }
 
@@ -596,9 +596,12 @@ sub populate_source_list {
   push(@source_list,"http://pyyaml.org/download/libyaml/yaml-0.1.4.tar.gz");
   push(@source_list,"ftp://ftp.gnu.org/gnu/readline/readline-6.2.tar.gz");
   push(@source_list,"ftp://ftp.gnu.org/gnu/gdbm/gdbm-1.10.tar.gz");
-  push(@source_list,"http://downloads.puppetlabs.com/puppet/puppet-3.1.0.tar.gz");
+  push(@source_list,"http://downloads.puppetlabs.com/puppet/puppet-3.4.0.tar.gz");
   push(@source_list,"http://downloads.puppetlabs.com/facter/facter-1.6.17.tar.gz");
   push(@source_list,"ftp://sourceware.org/pub/libffi/libffi-3.0.12.tar.gz");
+  push(@source_list,"http://downloads.puppetlabs.com/puppet/puppet-3.4.0.tar.gz");
+  push(@source_list,"http://downloads.puppetlabs.com/facter/facter-1.7.4.tar.gz");
+  push(@source_list,"http://downloads.puppetlabs.com/hiera/hiera-1.3.0.tar.gz");
   return @source_list;
 }
 
@@ -628,6 +631,7 @@ sub get_source_file {
   my $command;
   my $src_dir;
   my $wget_test;
+  my $file_name;
 
   if ($os_name=~/SunOS/) {
     $src_dir="$work_dir/src";
@@ -640,9 +644,12 @@ sub get_source_file {
     if ($source_url=~/$option{'n'}-$option{'v'}/) {
       $wget_test=`which wget`;
       if ($wget_test!~/no wget/) {
-        $command="cd $src_dir ; wget $source_url";
-        print_debug("Executing: $command","long");
-        system("$command");
+        $file_name=basename($source_url);
+        if (! -e "$src_dir/$file_name") {
+          $command="cd $src_dir ; wget $source_url";
+          print_debug("Executing: $command","long");
+          system("$command");
+        }
       }
       else {
         print "No wget found\n";
@@ -785,7 +792,9 @@ sub compile_source {
     push(@commands,"cat config-top.h.orig |sed 's,/\\* #define SYSLOG_HISTORY \\*/,#define SYSLOG_HISTORY,' > config-top.h");
     push(@commands,"rm config-top.h.orig");
   }
-  push(@commands,"make clean");
+  if (! -e "$source_dir_name/install.rb") {
+    push(@commands,"make clean");
+  }
   if ($option{'n'}=~/john/) {
     if ($option{'a'}=~/i386/ ) {
       push(@commands,"cd src ; make solaris-x86-any-gcc");
@@ -795,7 +804,9 @@ sub compile_source {
     }
   }
   else {
-    push(@commands,"LD_LIBRARY_PATH=\"\$LD_LIBRARY_PATH:$real_install_dir/lib\" ; export LD_LIBRARY_PATH; CFLAGS=\"\$CFLAGS -I$real_install_dir/include\" ; export CFLAGS ; CC=cc ; export CC ; make all");
+    if (! -e "$source_dir_name/install.rb") {
+      push(@commands,"LD_LIBRARY_PATH=\"\$LD_LIBRARY_PATH:$real_install_dir/lib\" ; export LD_LIBRARY_PATH; CFLAGS=\"\$CFLAGS -I$real_install_dir/include\" ; export CFLAGS ; CC=cc ; export CC ; make all");
+    }
   }
   push(@commands,"cd $ins_dir ; rm -rf *");
   if ($option{'n'}=~/openssl/) {
@@ -807,7 +818,12 @@ sub compile_source {
       push(@commands,"(cd run ; /usr/sfw/bin/gtar -cpf - . )|(cd $ins_pkg_dir/bin ; /usr/sfw/bin/gtar -xpf - )");
     }
     else {
-      push(@commands,"make DESTDIR=$ins_dir install");
+      if (! -e "$source_dir_name/install.rb") {
+        push(@commands,"make DESTDIR=$ins_dir install");
+      }
+      else {
+        push(@commands,"cd $source_dir_name ; ./install.rb --destdir=$ins_dir --full")
+      }
     }
   }
   if ($option{'n'}=~/setoolkit/) {
@@ -937,39 +953,52 @@ sub compile_source {
 
 sub create_mog {
   my $spool_dir="$work_dir/spool";
-  my $mog_file="$spool_dir/$option{'p'}.mog";
-  my $version_string="set name=pkg.fmri value=application/$option{'p'}\@$option{'v'},1.0";
-  my $info_string="set name=pkg.description value=\"$option{'v'}\"";
-  my $summary_string="set name=pkg.summary value=";
+  my $mog_file="$spool_dir/$option{'n'}.mog";
+  my $version_string="set name=pkg.fmri value=application/$option{'n'}\@$option{'v'},1.0";
+  my $info_string="set name=pkg.description value=\"$option{'n'}\"";
+  my $summary_string="set name=pkg.summary value=\"$option{'n'} $option{'v'}\"";
   my $arch_string+"set name=variant.arch value=$option{'a'}";
-  my $year_string=`date +%Y`;
-  chomp($year_string);
-  my $class_string="name=info.classification value=\"org.solaris.category.$year_string:Application";
+  my $class_string="set name=info.classification value=\"org.opensolaris.category.2008:Applications/System Utilities\"";
 
   if ($option{'n'}=~/wget/) {
-    $info_string="$info_string\"GNU Wget is a free software package for retrieving files using HTTP, HTTPS and FTP\"";
+    $summary_string="set name=pkg.summary value=\"GNU Wget is a free software package for retrieving files using HTTP, HTTPS and FTP\"";
   }
   open MOG_FILE,">$mog_file";
-  print MOG_FILE "\n";
-  print MOG_FILE "\n";
-  print MOG_FILE "\n";
-  print MOG_FILE "\n";
+  print MOG_FILE "$version_string\n";
+  print MOG_FILE "$info_string\n";
+  print MOG_FILE "$summary_string\n";
+  print MOG_FILE "$arch_string\n";
+  print MOG_FILE "$class_string\n";
+  if (! -e "$source_dir_name/install.rb") {
+    print MOG_FILE "depend fmri=pkg:/runtime/ruby"
+  }
   close MOG_FILE;
   return;
 }
 
 sub create_manifest {
+  my @commands;
+  my $command;
   my $ins_dir="$work_dir/ins";
   my $spool_dir="$work_dir/spool";
-  my $manifest="$spool_dir/$option{'n'}.p5m";
+  my $manifest="$ins_dir/$option{'n'}.p5m";
   my $manifest_1="$spool_dir/$option{'n'}.p5m.1";
   my $manifest_2="$spool_dir/$option{'n'}.p5m.2";
-  my $mog_file="$spool_dir/$option{'p'}.mog";
+  my $mog_file="$spool_dir/$option{'n'}.mog";
 
-  system("cd $ins_dir ; pkgsend generate . |pkgfmt > $manifest_1");
-  system("cd $ins_dir ; pkgmogrify -DARCH=`uname -p` $manifest_1 $mog_file |pkgfmt > $manifest_2");
-  system("cd $ins_dir ; pkgdepend generate -md  . $manifest_2 |pkgfmt > $manifest");
-  system("cd $ins_dir ; pkgdepend resolve -m $manifest");
+  if (! -e "$source_dir_name/install.rb") {
+    push(@commands,"pkgsend generate . |pkgfmt > $manifest_1");
+  }
+  else {
+    push(@commands,"pkgsend generate . |pkgfmt > $manifest_1");
+  }
+  push(@commands,"pkgmogrify -DARCH=`uname -p` $manifest_1 $mog_file |pkgfmt > $manifest_2");
+  push(@commands,"pkgdepend generate -md  . $manifest_2 |pkgfmt > $manifest");
+  push(@commands,"pkgdepend resolve -m $manifest");
+  foreach $command (@commands) {
+    print_debug("Executing: $command","short");
+    system ("cd $ins_dir ; $command");
+  }
   return;
 }
 
