@@ -4,7 +4,7 @@ use Getopt::Std;
 use File::Basename;
 
 # Name:         burst (Build Unaided Rules Source Tool)
-# Version:      1.3.8
+# Version:      1.3.9
 # Release:      1
 # License:      Open Source
 # Group:        System
@@ -88,6 +88,7 @@ my $vendor_string="Lateral Blast";
 my $log_file;
 my $os_name=`uname`;
 my $os_arch=`uname -p`;
+my $os_ver=`uname -r`;
 my $options="Ba:b:c:d:e:f:i:l:n:p:r:s:u:v:w:hCD:V";
 
 if ($#ARGV == -1) {
@@ -144,13 +145,14 @@ sub print_usage {
   print "Example:\n";
   print "$script_name -d /tmp/$script_name -s /tmp/setoolkit-3.5.1.tar -p $pkg_base_name";
   print "\n";
-  #print "\n";
+  print "\n";
   return;
 }
 
 sub print_version {
   my $script_version=get_script_version();
   print "$script_version\n"
+  return;
 }
 
 sub get_script_version {
@@ -167,9 +169,15 @@ if ($os_name=~/SunOS/) {
     extract_source();
     compile_source();
   }
-  create_spool();
-  create_trans();
-  create_pkg();
+  if ($os_ver=~/5\.11/) {
+    create_mog();
+    create_manifest();
+  }
+  else {
+    create_spool();
+    create_trans();
+    create_pkg();
+  }
 }
 if ($os_name=~/Linux/) {
   create_spec();
@@ -460,15 +468,14 @@ sub check_env {
 
 sub remove_extensions {
   my @extensions;
-  my $counter=0;
   my $file_name=$_[0];
   my $extension;
 
-  $extensions[$counter]=".tgz"; $counter++;
-  $extensions[$counter]=".tar.gz"; $counter++;
-  $extensions[$counter]=".tar.bz2"; $counter++;
-  $extensions[$counter]=".tbz2"; $counter++;
-  $extensions[$counter]=".tar"; $counter++;
+  push(@extensions,".tgz");
+  push(@extensions,".tar.gz");
+  push(@extensions,".tar.bz2");
+  push(@extensions,".tbz2");
+  push(@extensions,".tar");
   foreach $extension (@extensions) {
     $file_name=~s/$extension//g;
   }
@@ -478,8 +485,8 @@ sub remove_extensions {
 sub determine_source_file_name {
 
   my @extensions;
+  my $extension;
   my $record;
-  my $counter;
   my $file_name_base;
   my $src_dir;
 
@@ -491,11 +498,11 @@ sub determine_source_file_name {
   }
   $file_name_base="$src_dir/$option{'n'}-$option{'v'}";
 
-  $extensions[0]="tar";
-  $extensions[1]="tgz";
-  $extensions[2]="tar.gz";
-  $extensions[3]="tar.bz2";
-  $extensions[4]="tbz2";
+  push(@extensions,"tar");
+  push(@extensions,"tgz");
+  push(@extensions,"tar.gz");
+  push(@extensions,"tar.bz2");
+  push(@extensions,"tbz2");
   if ($option{'n'}=~/bsl/) {
     # Add handling for bash with syslog support
     $file_name_base=~s/bsl/bash/g;
@@ -506,12 +513,12 @@ sub determine_source_file_name {
       $file_name_base=~s/orca-/orca-snapshot-r/g;
     }
   }
-  for ($counter=0; $counter<@extensions; $counter++) {
+  foreach $extension (@extensions) {
     if ($option{"D"}) {
-      print "Seeing if $file_name_base.$extensions[$counter] exists\n";
+      print "Seeing if $file_name_base.$extension exists\n";
     }
-    if (-e "$file_name_base.$extensions[$counter]") {
-      $option{'s'}="$file_name_base.$extensions[$counter]";
+    if (-e "$file_name_base.$extension") {
+      $option{'s'}="$file_name_base.$extension";
       return;
     }
   }
@@ -524,15 +531,14 @@ sub determine_source_file_name {
 
 sub check_deps {
   my @dep_list;
-  my $counter=0;
   my $record;
   my $dep;
   my $package;
   my $pkg_check;
   my @new_dep_list;
 
-  $dep_list[$counter]="ruby,yaml:readline:libffi"; $counter++;
-  $dep_list[$counter]="ssh,ssl"; $counter++;
+  push(@dep_list,"ruby,yaml:readline:libffi");
+  push(@dep_list,"ssh,ssl");
 
   foreach $record (@dep_list) {
     ($package,$dep)=split(",",$record);
@@ -562,47 +568,43 @@ sub check_deps {
       }
     }
   }
-
+  return;
 }
 
 sub populate_source_list {
 
   my @source_list;
-  my $counter=0;
   my $package_name=$option{'n'};
 
   if ($package_name=~/bsl/) {
     $package_name="bash";
   }
-  $source_list[$counter]="http://mirror.internode.on.net/pub/OpenBSD/OpenSSH/portable/openssh-6.1p1.tar.gz"; $counter++;
-  $source_list[$counter]="http://www.openssl.org/source/openssl-1.0.1e.tar.gz"; $counter++;
-  $source_list[$counter]="http://www.orcaware.com/orca/pub/snapshots/orca-snapshot-r557.tar.bz2"; $counter++;
-  $source_list[$counter]="http://downloads.sourceforge.net/project/setoolkit/SE%20Toolkit/SE%20Toolkit%203.5.1/setoolkit-3.5.1.tar.gz"; $counter++;
-  $source_list[$counter]="http://www.cpan.org/src/5.0/perl-5.16.2.tar.gz"; $counter++;
-  $source_list[$counter]="ftp://ftp.gnu.org/gnu/bash/bash-4.2.tar.gz"; $counter++;
-  $source_list[$counter]="http://www.openwall.com/john/g/john-1.7.9.tar.gz"; $counter++;
-  $source_list[$counter]="http://ftp.gnu.org/gnu/patch/patch-2.7.1.tar.gz"; $counter++;
-  $source_list[$counter]="http://ftp.gnu.org/gnu/diffutils/diffutils-3.2.tar.gz"; $counter++;
-  $source_list[$counter]="http://zlib.net/zlib-1.2.7.tar.gz"; $counter++;
-  $source_list[$counter]="http://www.sudo.ws/sudo/dist/sudo-1.8.6p7.tar.gz"; $counter++;
-  $source_list[$counter]="ftp://ftp.gnu.org/gnu/wget/wget-1.14.tar.gz"; $counter++;
-  $source_list[$counter]="ftp://ftp.ruby-lang.org/pub/ruby/1.9/ruby-1.9.3-p392.tar.bz2"; $counter++;
-  $source_list[$counter]="http://production.cf.rubygems.org/rubygems/rubygems-2.0.2.tgz"; $counter++;
-  $source_list[$counter]="http://pyyaml.org/download/libyaml/yaml-0.1.4.tar.gz"; $counter++;
-  $source_list[$counter]="ftp://ftp.gnu.org/gnu/readline/readline-6.2.tar.gz"; $counter++;
-  $source_list[$counter]="ftp://ftp.gnu.org/gnu/gdbm/gdbm-1.10.tar.gz"; $counter++;
-  $source_list[$counter]="http://downloads.puppetlabs.com/puppet/puppet-3.1.0.tar.gz"; $counter++;
-  $source_list[$counter]="http://downloads.puppetlabs.com/facter/facter-1.6.17.tar.gz"; $counter++;
-  $source_list[$counter]="ftp://sourceware.org/pub/libffi/libffi-3.0.12.tar.gz"; $counter++;
-  #$source_list[$counter]=""; $counter++;
-
+  push(@source_list,"http://mirror.internode.on.net/pub/OpenBSD/OpenSSH/portable/openssh-6.1p1.tar.gz");
+  push(@source_list,"http://www.openssl.org/source/openssl-1.0.1e.tar.gz");
+  push(@source_list,"http://www.orcaware.com/orca/pub/snapshots/orca-snapshot-r557.tar.bz2");
+  push(@source_list,"http://downloads.sourceforge.net/project/setoolkit/SE%20Toolkit/SE%20Toolkit%203.5.1/setoolkit-3.5.1.tar.gz");
+  push(@source_list,"http://www.cpan.org/src/5.0/perl-5.16.2.tar.gz");
+  push(@source_list,"ftp://ftp.gnu.org/gnu/bash/bash-4.2.tar.gz");
+  push(@source_list,"http://www.openwall.com/john/g/john-1.7.9.tar.gz");
+  push(@source_list,"http://ftp.gnu.org/gnu/patch/patch-2.7.1.tar.gz");
+  push(@source_list,"http://ftp.gnu.org/gnu/diffutils/diffutils-3.2.tar.gz");
+  push(@source_list,"http://zlib.net/zlib-1.2.7.tar.gz");
+  push(@source_list,"http://www.sudo.ws/sudo/dist/sudo-1.8.6p7.tar.gz");
+  push(@source_list,"ftp://ftp.gnu.org/gnu/wget/wget-1.14.tar.gz");
+  push(@source_list,"ftp://ftp.ruby-lang.org/pub/ruby/1.9/ruby-1.9.3-p392.tar.bz2");
+  push(@source_list,"http://production.cf.rubygems.org/rubygems/rubygems-2.0.2.tgz");
+  push(@source_list,"http://pyyaml.org/download/libyaml/yaml-0.1.4.tar.gz");
+  push(@source_list,"ftp://ftp.gnu.org/gnu/readline/readline-6.2.tar.gz");
+  push(@source_list,"ftp://ftp.gnu.org/gnu/gdbm/gdbm-1.10.tar.gz");
+  push(@source_list,"http://downloads.puppetlabs.com/puppet/puppet-3.1.0.tar.gz");
+  push(@source_list,"http://downloads.puppetlabs.com/facter/facter-1.6.17.tar.gz");
+  push(@source_list,"ftp://sourceware.org/pub/libffi/libffi-3.0.12.tar.gz");
   return @source_list;
 }
 
 sub get_source_version {
 
   my @source_list;
-  my $counter=0;
   my $source_url;
   my $header;
 
@@ -622,7 +624,6 @@ sub get_source_version {
 sub get_source_file {
 
   my @source_list;
-  my $counter=0;
   my $source_url;
   my $command;
   my $src_dir;
@@ -699,33 +700,32 @@ sub determine_source_dir_name {
 sub search_conf_list {
 
   my @commands;
-  my $counter=0;
   my $command;
   my $record;
   my $package;
   my $conf_string;
 
-  $commands[$counter]="wget,CC=\"cc\" ; export CC ; ./configure --prefix=$real_install_dir --with-ssl=openssl --with-libssl-prefix=$real_install_dir"; $counter++;
-  $commands[$counter]="openssl,CC=\"cc\" ; export CC ; ./Configure --prefix=$real_install_dir --openssldir=$real_install_dir zlib-dynamic threads shared solaris-x86-cc"; $counter++;
-  $commands[$counter]="sudo,CC=\"cc\" ; export CC ; ./configure --prefix=$real_install_dir --enable-pam"; $counter++;
+  push(@commands,"wget,CC=\"cc\" ; export CC ; ./configure --prefix=$real_install_dir --with-ssl=openssl --with-libssl-prefix=$real_install_dir");
+  push(@commands,"openssl,CC=\"cc\" ; export CC ; ./Configure --prefix=$real_install_dir --openssldir=$real_install_dir zlib-dynamic threads shared solaris-x86-cc");
+  push(@commands,"sudo,CC=\"cc\" ; export CC ; ./configure --prefix=$real_install_dir --enable-pam");
   if ($os_name=~/SunOS/) {
     if ($option{'n'}=~/orca|setoolkit/) {
       if ($option{'n'}=~/orca/) {
         $conf_string="--prefix=$real_install_dir --with-rrd-dir=/var/orca/rrd --with-html-dir=/var/orca/html --with-var-dir=/var/orca --build=$option{'a'}-sun-solaris2.$option{'r'} --radius_db=off";
-        $commands[$counter]="orca,ORCA_CONFIGURE_COMMAND_LINE=\"$conf_string\" ; export ORCA_CONFIGURE_COMMAND_LINE ; PATH=\"\$PATH:/usr/ccs/bin\" ; export PATH ; CC=\"$cc_bin\" ; export CC ; ./configure $conf_string"; $counter++;
+        push(@commands,"orca,ORCA_CONFIGURE_COMMAND_LINE=\"$conf_string\" ; export ORCA_CONFIGURE_COMMAND_LINE ; PATH=\"\$PATH:/usr/ccs/bin\" ; export PATH ; CC=\"$cc_bin\" ; export CC ; ./configure $conf_string");
       }
       if ($option{'n'}=~/setoolkit/) {
-        $commands[$counter]="setoolkit,CC=\"CC\" ; export CC ; ./configure --prefix=$real_install_dir --with-se-include-dir=$real_install_dir/include --with-se-examples-dir=$real_install_dir/examples"; $counter++;
+        push(@commands,"setoolkit,CC=\"CC\" ; export CC ; ./configure --prefix=$real_install_dir --with-se-include-dir=$real_install_dir/include --with-se-examples-dir=$real_install_dir/examples");
       }
     }
-    $commands[$counter]="perl,CC=\"gcc\" ; export CC ; ./Configure -des -Dusethreads -Dcc=\"gcc -m32\" -Dprefix=$real_install_dir -Dusedttrace -Dusefaststdio -Duseshrplib -Dusevfork -Dless=less -Duse64bitall -Duse64bitint -Dpager=more"; $counter++;
+    push(@commands,"perl,CC=\"gcc\" ; export CC ; ./Configure -des -Dusethreads -Dcc=\"gcc -m32\" -Dprefix=$real_install_dir -Dusedttrace -Dusefaststdio -Duseshrplib -Dusevfork -Dless=less -Duse64bitall -Duse64bitint -Dpager=more");
     if ($option{'r'}!~/9|10|11/) {
-      $commands[$counter]="ssh,CFLAGS=\"\$CFLAGS -I$real_install_dir/include\" ; export CFLAGS ; CC=cc ; export CC ; ./configure --prefix=$real_install_dir --with-zlib --with-solaris-contracts --with-solaris-projects --with-tcp-wrappers=$real_install_dir --with-ssl-dir=$real_install_dir --with-privsep-user=sshd --with-md5-passwords --with-xauth=/usr/openwin/bin/xauth --with-mantype=man --with-pid-dir=/var/run --with-pam --with-audit=bsm --enable-shared"; $counter++;
+      push(@commands,"ssh,CFLAGS=\"\$CFLAGS -I$real_install_dir/include\" ; export CFLAGS ; CC=cc ; export CC ; ./configure --prefix=$real_install_dir --with-zlib --with-solaris-contracts --with-solaris-projects --with-tcp-wrappers=$real_install_dir --with-ssl-dir=$real_install_dir --with-privsep-user=sshd --with-md5-passwords --with-xauth=/usr/openwin/bin/xauth --with-mantype=man --with-pid-dir=/var/run --with-pam --with-audit=bsm --enable-shared");
     }
     else {
-      $commands[$counter]="openssh,CFLAGS=\"\$CFLAGS -I$real_install_dir/include -I/usr/sfw/include\" ; export CFLAGS ; CC=cc ; export CC ; ./configure --prefix=$real_install_dir --with-zlib --with-solaris-contracts --with-solaris-projects --with-tcp-wrappers=/usr/sfw --with-ssl-dir=$real_install_dir --with-privsep-user=sshd --with-md5-passwords --with-xauth=/usr/openwin/bin/xauth --with-mantype=man --with-pid-dir=/var/run --with-pam --with-audit=bsm --enable-shared"; $counter++;
+      push(@commands,"openssh,CFLAGS=\"\$CFLAGS -I$real_install_dir/include -I/usr/sfw/include\" ; export CFLAGS ; CC=cc ; export CC ; ./configure --prefix=$real_install_dir --with-zlib --with-solaris-contracts --with-solaris-projects --with-tcp-wrappers=/usr/sfw --with-ssl-dir=$real_install_dir --with-privsep-user=sshd --with-md5-passwords --with-xauth=/usr/openwin/bin/xauth --with-mantype=man --with-pid-dir=/var/run --with-pam --with-audit=bsm --enable-shared");
     }
-    $commands[$counter]="ruby,CC=cc ; export CC ; ./configure --prefix=$real_install_dir --enable-shared"
+    push(@commands,"ruby,CC=cc ; export CC ; ./configure --prefix=$real_install_dir --enable-shared");
   }
   foreach $command (@commands) {
     ($package,$command)=split(",",$command);
@@ -744,7 +744,6 @@ sub compile_source {
   my $ins_dir="$work_dir/ins";
   my $src_dir="$work_dir/src";
   my $conf_string;
-  my $counter=0;
   my @files;
   my $file;
   my $se_version;
@@ -771,7 +770,7 @@ sub compile_source {
         }
       }
       if ( -e "$patch_file") {
-        $commands[$counter]="gpatch < $patch_file"; $counter++;
+        push(@commands,"gpatch < $patch_file");
       }
       else {
         print "Download HPN patch and put it in $src_dir\n";
@@ -779,41 +778,42 @@ sub compile_source {
       }
     }
   }
-  $commands[$counter]=search_conf_list(); $counter++;
+  $command=search_conf_list();
+  push(@commands,$command);
   if ($option{'n'}=~/bsl/) {
-    $commands[$counter]="cp config-top.h config-top.h.orig"; $counter++;
-    $commands[$counter]="cat config-top.h.orig |sed 's,/\\* #define SYSLOG_HISTORY \\*/,#define SYSLOG_HISTORY,' > config-top.h"; $counter++;
-    $commands[$counter]="rm config-top.h.orig"; $counter++;
+    push(@commands,"cp config-top.h config-top.h.orig");
+    push(@commands,"cat config-top.h.orig |sed 's,/\\* #define SYSLOG_HISTORY \\*/,#define SYSLOG_HISTORY,' > config-top.h");
+    push(@commands,"rm config-top.h.orig");
   }
-  $commands[$counter]="make clean"; $counter++;
+  push(@commands,"make clean");
   if ($option{'n'}=~/john/) {
     if ($option{'a'}=~/i386/ ) {
-      $commands[$counter]="cd src ; make solaris-x86-any-gcc"; $counter++;
+      push(@commands,"cd src ; make solaris-x86-any-gcc");
     }
     else {
-      $commands[$counter]="cd src ; make solaris-sparc-gcc"; $counter++;
+      push(@commands,"cd src ; make solaris-sparc-gcc");
     }
   }
   else {
-    $commands[$counter]="LD_LIBRARY_PATH=\"\$LD_LIBRARY_PATH:$real_install_dir/lib\" ; export LD_LIBRARY_PATH; CFLAGS=\"\$CFLAGS -I$real_install_dir/include\" ; export CFLAGS ; CC=cc ; export CC ; make all"; $counter++;
+    push(@commands,"LD_LIBRARY_PATH=\"\$LD_LIBRARY_PATH:$real_install_dir/lib\" ; export LD_LIBRARY_PATH; CFLAGS=\"\$CFLAGS -I$real_install_dir/include\" ; export CFLAGS ; CC=cc ; export CC ; make all");
   }
-  $commands[$counter]="cd $ins_dir ; rm -rf *"; $counter++;
+  push(@commands,"cd $ins_dir ; rm -rf *");
   if ($option{'n'}=~/openssl/) {
-    $commands[$counter]="make INSTALL_PREFIX=$ins_dir install"; $counter++;
+    push(@commands,"make INSTALL_PREFIX=$ins_dir install");
   }
   else {
     if ($option{'n'}=~/john/) {
-      $commands[$counter]="mkdir -p $ins_pkg_dir/bin"; $counter++;
-      $commands[$counter]="(cd run ; /usr/sfw/bin/gtar -cpf - . )|(cd $ins_pkg_dir/bin ; /usr/sfw/bin/gtar -xpf - )"; $counter++;
+      push(@commands,"mkdir -p $ins_pkg_dir/bin");
+      push(@commands,"(cd run ; /usr/sfw/bin/gtar -cpf - . )|(cd $ins_pkg_dir/bin ; /usr/sfw/bin/gtar -xpf - )");
     }
     else {
-      $commands[$counter]="make DESTDIR=$ins_dir install"; $counter++;
+      push(@commands,"make DESTDIR=$ins_dir install");
     }
   }
   if ($option{'n'}=~/setoolkit/) {
-    $commands[$counter]="cp $ins_pkg_dir/bin/se $ins_pkg_dir/bin/se.orig"; $counter++;
-    $commands[$counter]="cat $ins_pkg_dir/bin/se.orig |sed 's,^ARCH.*,ARCH=\"\",' > $ins_pkg_dir/bin/se"; $counter++;
-    $commands[$counter]="rm $ins_pkg_dir/bin/se.orig"; $counter++;
+    push(@commands,"cp $ins_pkg_dir/bin/se $ins_pkg_dir/bin/se.orig");
+    push(@commands,"cat $ins_pkg_dir/bin/se.orig |sed 's,^ARCH.*,ARCH=\"\",' > $ins_pkg_dir/bin/se");
+    push(@commands,"rm $ins_pkg_dir/bin/se.orig");
     if ($option{'r'}=~/6/) {
       $se_version="3.2.1"
     }
@@ -823,98 +823,94 @@ sub compile_source {
     if ($option{'r'}=~/9|10/) {
       $se_version="3.4"
     }
-    $commands[$counter]="cp $ins_pkg_dir/bin/se $ins_pkg_dir/bin/se.orig"; $counter++;
-    $commands[$counter]="cat $ins_pkg_dir/bin/se.orig |sed 's,SEINCLUDE=\"\$TOP\"/include.*,SEINCLUDE=\"\$TOP\"/include:$real_install_dir/lib/SE/$se_version,' > $ins_pkg_dir/bin/se"; $counter++;
-    $commands[$counter]="rm $ins_pkg_dir/bin/se.orig"; $counter++;
+    push(@commands,"cp $ins_pkg_dir/bin/se $ins_pkg_dir/bin/se.orig");
+    push(@commands,"cat $ins_pkg_dir/bin/se.orig |sed 's,SEINCLUDE=\"\$TOP\"/include.*,SEINCLUDE=\"\$TOP\"/include:$real_install_dir/lib/SE/$se_version,' > $ins_pkg_dir/bin/se");
+    push(@commands,"rm $ins_pkg_dir/bin/se.orig");
   }
   if ($option{'n'}=~/openssh/) {
-    $commands[$counter]="cp $ins_pkg_dir/etc/sshd_config $ins_pkg_dir/etc/sshd_config.orig"; $counter++;
-    $commands[$counter]="cat $ins_pkg_dir/etc/sshd_config.orig |sed 's,^#UsePAM no.*,UsePAM yes,' > $ins_pkg_dir/etc/sshd_config"; $counter++;
-    $commands[$counter]="rm $ins_pkg_dir/etc/sshd_config.orig"; $counter++;
+    push(@commands,"cp $ins_pkg_dir/etc/sshd_config $ins_pkg_dir/etc/sshd_config.orig");
+    push(@commands,"cat $ins_pkg_dir/etc/sshd_config.orig |sed 's,^#UsePAM no.*,UsePAM yes,' > $ins_pkg_dir/etc/sshd_config");
+    push(@commands,"rm $ins_pkg_dir/etc/sshd_config.orig");
   }
   if ($option{'n'}=~/orca/) {
     # If GNU tools are installed the configure script finds them
     # Replace them with the standard tools in the orca scripts
-    $commands[$counter]="cp $ins_pkg_dir/bin/start_orca_services $ins_pkg_dir/bin/start_orca_services.orig"; $counter++;
-    $commands[$counter]="cat $ins_pkg_dir/bin/start_orca_services.orig |sed 's,^\$CAT=.*,\$CAT=/bin/cat,' > $ins_pkg_dir/bin/start_orca_services"; $counter++;
-    $commands[$counter]="rm $ins_pkg_dir/bin/start_orca_services.orig"; $counter++;
+    push(@commands,"cp $ins_pkg_dir/bin/start_orca_services $ins_pkg_dir/bin/start_orca_services.orig");
+    push(@commands,"cat $ins_pkg_dir/bin/start_orca_services.orig |sed 's,^\$CAT=.*,\$CAT=/bin/cat,' > $ins_pkg_dir/bin/start_orca_services");
+    push(@commands,"rm $ins_pkg_dir/bin/start_orca_services.orig");
 
-    $commands[$counter]="cp $ins_pkg_dir/bin/start_orca_services $ins_pkg_dir/bin/start_orca_services.orig"; $counter++;
-    $commands[$counter]="cat $ins_pkg_dir/bin/start_orca_services.orig |sed 's,^\$ECHO=.*,\$ECHO=/bin/echo,' > $ins_pkg_dir/bin/start_orca_services"; $counter++;
-    $commands[$counter]="rm $ins_pkg_dir/bin/start_orca_services.orig"; $counter++;
+    push(@commands,"cp $ins_pkg_dir/bin/start_orca_services $ins_pkg_dir/bin/start_orca_services.orig");
+    push(@commands,"cat $ins_pkg_dir/bin/start_orca_services.orig |sed 's,^\$ECHO=.*,\$ECHO=/bin/echo,' > $ins_pkg_dir/bin/start_orca_services");
+    push(@commands,"rm $ins_pkg_dir/bin/start_orca_services.orig");
 
-    $commands[$counter]="cp $ins_pkg_dir/bin/start_orca_services $ins_pkg_dir/bin/start_orca_services.orig"; $counter++;
-    $commands[$counter]="cat $ins_pkg_dir/bin/start_orca_services.orig |sed 's,^\$TOUCH=.*,\$TOUCH=/bin/touch,' > $ins_pkg_dir/bin/start_orca_services"; $counter++;
-    $commands[$counter]="rm $ins_pkg_dir/bin/start_orca_services.orig"; $counter++;
+    push(@commands,"cp $ins_pkg_dir/bin/start_orca_services $ins_pkg_dir/bin/start_orca_services.orig");
+    push(@commands,"cat $ins_pkg_dir/bin/start_orca_services.orig |sed 's,^\$TOUCH=.*,\$TOUCH=/bin/touch,' > $ins_pkg_dir/bin/start_orca_services");
+    push(@commands,"rm $ins_pkg_dir/bin/start_orca_services.orig");
 
     # Fix up location of SE
 
-    $commands[$counter]="cp $ins_pkg_dir/bin/start_orcallator $ins_pkg_dir/bin/start_orcallator.orig"; $counter++;
-    $commands[$counter]="cat $ins_pkg_dir/bin/start_orcallator.orig |sed 's,^SE=.*,SE=$real_install_dir/bin/se,' > $ins_pkg_dir/bin/start_orcallator"; $counter++;
-    $commands[$counter]="rm $ins_pkg_dir/bin/start_orcallator.orig"; $counter++;
+    push(@commands,"cp $ins_pkg_dir/bin/start_orcallator $ins_pkg_dir/bin/start_orcallator.orig");
+    push(@commands,"cat $ins_pkg_dir/bin/start_orcallator.orig |sed 's,^SE=.*,SE=$real_install_dir/bin/se,' > $ins_pkg_dir/bin/start_orcallator");
+    push(@commands,"rm $ins_pkg_dir/bin/start_orcallator.orig");
 
-    $commands[$counter]="cp $ins_pkg_dir/bin/start_orcallator $ins_pkg_dir/bin/start_orcallator.orig"; $counter++;
-    $commands[$counter]="cat $ins_pkg_dir/bin/start_orcallator.orig |sed 's,\$libdir/orcallator,$real_install_dir/share/setoolkit/orcallator/orcallator,' > $ins_pkg_dir/bin/start_orcallator"; $counter++;
-    $commands[$counter]="rm $ins_pkg_dir/bin/start_orcallator.orig"; $counter++;
+    push(@commands,"cp $ins_pkg_dir/bin/start_orcallator $ins_pkg_dir/bin/start_orcallator.orig");
+    push(@commands,"cat $ins_pkg_dir/bin/start_orcallator.orig |sed 's,\$libdir/orcallator,$real_install_dir/share/setoolkit/orcallator/orcallator,' > $ins_pkg_dir/bin/start_orcallator");
+    push(@commands,"rm $ins_pkg_dir/bin/start_orcallator.orig");
 
     # Fix configuration files
 
-    $commands[$counter]="cp $ins_pkg_dir/etc/orca_services.cfg $ins_pkg_dir/etc/orca_services.cfg.orig"; $counter++;
-    $commands[$counter]="cat $ins_pkg_dir/etc/orca_services.cfg.orig |sed 's,$real_install_dir/orca,/var/orca,' > $ins_pkg_dir/etc/orca_services.cfg"; $counter++;
-    $commands[$counter]="rm $ins_pkg_dir/etc/orca_services.cfg.orig"; $counter++;
+    push(@commands,"cp $ins_pkg_dir/etc/orca_services.cfg $ins_pkg_dir/etc/orca_services.cfg.orig");
+    push(@commands,"cat $ins_pkg_dir/etc/orca_services.cfg.orig |sed 's,$real_install_dir/orca,/var/orca,' > $ins_pkg_dir/etc/orca_services.cfg");
+    push(@commands,"rm $ins_pkg_dir/etc/orca_services.cfg.orig");
 
-    $commands[$counter]="cp $ins_pkg_dir/etc/orca_services.cfg $ins_pkg_dir/etc/orca_services.cfg.orig"; $counter++;
-    $commands[$counter]="cat $ins_pkg_dir/etc/orca_services.cfg.orig |sed 's,/var/orca/var,/var/orca,' > $ins_pkg_dir/etc/orca_services.cfg"; $counter++;
-    $commands[$counter]="rm $ins_pkg_dir/etc/orca_services.cfg.orig"; $counter++;
+    push(@commands,"cp $ins_pkg_dir/etc/orca_services.cfg $ins_pkg_dir/etc/orca_services.cfg.orig");
+    push(@commands,"cat $ins_pkg_dir/etc/orca_services.cfg.orig |sed 's,/var/orca/var,/var/orca,' > $ins_pkg_dir/etc/orca_services.cfg");
+    push(@commands,"rm $ins_pkg_dir/etc/orca_services.cfg.orig");
 
-    $commands[$counter]="cp $ins_pkg_dir/etc/orcallator.cfg $ins_pkg_dir/etc/orcallator.cfg.orig"; $counter++;
-    $commands[$counter]="cat $ins_pkg_dir/etc/orcallator.cfg.orig |sed 's,$real_install_dir/orca,/var/orca,' > $ins_pkg_dir/etc/orcallator.cfg"; $counter++;
-    $commands[$counter]="rm $ins_pkg_dir/etc/orcallator.cfg.orig"; $counter++;
+    push(@commands,"cp $ins_pkg_dir/etc/orcallator.cfg $ins_pkg_dir/etc/orcallator.cfg.orig");
+    push(@commands,"cat $ins_pkg_dir/etc/orcallator.cfg.orig |sed 's,$real_install_dir/orca,/var/orca,' > $ins_pkg_dir/etc/orcallator.cfg");
+    push(@commands,"rm $ins_pkg_dir/etc/orcallator.cfg.orig");
 
-    $commands[$counter]="cp $ins_pkg_dir/etc/orcallator.cfg $ins_pkg_dir/etc/orcallator.cfg.orig"; $counter++;
-    $commands[$counter]="cat $ins_pkg_dir/etc/orcallator.cfg.orig |sed 's,/var/orca/var,/var/orca,' > $ins_pkg_dir/etc/orcallator.cfg"; $counter++;
-    $commands[$counter]="rm $ins_pkg_dir/etc/orcallator.cfg.orig"; $counter++;
+    push(@commands,"cp $ins_pkg_dir/etc/orcallator.cfg $ins_pkg_dir/etc/orcallator.cfg.orig");
+    push(@commands,"cat $ins_pkg_dir/etc/orcallator.cfg.orig |sed 's,/var/orca/var,/var/orca,' > $ins_pkg_dir/etc/orcallator.cfg");
+    push(@commands,"rm $ins_pkg_dir/etc/orcallator.cfg.orig");
 
-    $commands[$counter]="cp $ins_pkg_dir/etc/orcallator.cfg $ins_pkg_dir/etc/orcallator.cfg.orig"; $counter++;
-    $commands[$counter]="cat $ins_pkg_dir/etc/orcallator.cfg.orig |sed 's,/orcallator\$,,' > $ins_pkg_dir/etc/orcallator.cfg"; $counter++;
-    $commands[$counter]="rm $ins_pkg_dir/etc/orcallator.cfg.orig"; $counter++;
+    push(@commands,"cp $ins_pkg_dir/etc/orcallator.cfg $ins_pkg_dir/etc/orcallator.cfg.orig");
+    push(@commands,"cat $ins_pkg_dir/etc/orcallator.cfg.orig |sed 's,/orcallator\$,,' > $ins_pkg_dir/etc/orcallator.cfg");
+    push(@commands,"rm $ins_pkg_dir/etc/orcallator.cfg.orig");
 
-    $commands[$counter]="cp $ins_pkg_dir/etc/procallator.cfg $ins_pkg_dir/etc/procallator.cfg.orig"; $counter++;
-    $commands[$counter]="cat $ins_pkg_dir/etc/procallator.cfg.orig |sed 's,$real_install_dir/orca,/var,' > $ins_pkg_dir/etc/procallator.cfg"; $counter++;
-    $commands[$counter]="rm $ins_pkg_dir/etc/procallator.cfg.orig"; $counter++;
+    push(@commands,"cp $ins_pkg_dir/etc/procallator.cfg $ins_pkg_dir/etc/procallator.cfg.orig");
+    push(@commands,"cat $ins_pkg_dir/etc/procallator.cfg.orig |sed 's,$real_install_dir/orca,/var,' > $ins_pkg_dir/etc/procallator.cfg");
+    push(@commands,"rm $ins_pkg_dir/etc/procallator.cfg.orig");
 
-    $commands[$counter]="cp $ins_pkg_dir/etc/procallator.cfg $ins_pkg_dir/etc/procallator.cfg.orig"; $counter++;
-    $commands[$counter]="cat $ins_pkg_dir/etc/procallator.cfg.orig |sed 's,/var/orca/var,/var/orca,' > $ins_pkg_dir/etc/procallator.cfg"; $counter++;
-    $commands[$counter]="rm $ins_pkg_dir/etc/procallator.cfg.orig"; $counter++;
+    push(@commands,"cp $ins_pkg_dir/etc/procallator.cfg $ins_pkg_dir/etc/procallator.cfg.orig");
+    push(@commands,"cat $ins_pkg_dir/etc/procallator.cfg.orig |sed 's,/var/orca/var,/var/orca,' > $ins_pkg_dir/etc/procallator.cfg");
+    push(@commands,"rm $ins_pkg_dir/etc/procallator.cfg.orig");
 
-    $commands[$counter]="cp $ins_pkg_dir/etc/winallator.cfg $ins_pkg_dir/etc/winallator.cfg.orig"; $counter++;
-    $commands[$counter]="cat $ins_pkg_dir/etc/winallator.cfg.orig |sed 's,$real_install_dir/orca,/var,' > $ins_pkg_dir/etc/winallator.cfg"; $counter++;
-    $commands[$counter]="rm $ins_pkg_dir/etc/winallator.cfg.orig"; $counter++;
+    push(@commands,"cp $ins_pkg_dir/etc/winallator.cfg $ins_pkg_dir/etc/winallator.cfg.orig");
+    push(@commands,"cat $ins_pkg_dir/etc/winallator.cfg.orig |sed 's,$real_install_dir/orca,/var,' > $ins_pkg_dir/etc/winallator.cfg");
+    push(@commands,"rm $ins_pkg_dir/etc/winallator.cfg.orig");
 
-    $commands[$counter]="cp $ins_pkg_dir/etc/winallator.cfg $ins_pkg_dir/etc/winallator.cfg.orig"; $counter++;
-    $commands[$counter]="cat $ins_pkg_dir/etc/winallator.cfg.orig |sed 's,/var/orca/var,/var/orca,' > $ins_pkg_dir/etc/winallator.cfg"; $counter++;
-    $commands[$counter]="rm $ins_pkg_dir/etc/winallator.cfg.orig"; $counter++;
+    push(@commands,"cp $ins_pkg_dir/etc/winallator.cfg $ins_pkg_dir/etc/winallator.cfg.orig");
+    push(@commands,"cat $ins_pkg_dir/etc/winallator.cfg.orig |sed 's,/var/orca/var,/var/orca,' > $ins_pkg_dir/etc/winallator.cfg");
+    push(@commands,"rm $ins_pkg_dir/etc/winallator.cfg.orig");
 
-    $commands[$counter]="cp $ins_pkg_dir/bin/orca_services_running $ins_pkg_dir/bin/orca_services_running.orig"; $counter++;
-    $commands[$counter]="cat $ins_pkg_dir/bin/orca_services_running.orig |sed 's,$real_install_dir/orca/var,/var/orca,' > $ins_pkg_dir/bin/orca_services_running"; $counter++;
-    $commands[$counter]="rm $ins_pkg_dir/bin/orca_services_running.orig"; $counter++;
+    push(@commands,"cp $ins_pkg_dir/bin/orca_services_running $ins_pkg_dir/bin/orca_services_running.orig");
+    push(@commands,"cat $ins_pkg_dir/bin/orca_services_running.orig |sed 's,$real_install_dir/orca/var,/var/orca,' > $ins_pkg_dir/bin/orca_services_running");
+    push(@commands,"rm $ins_pkg_dir/bin/orca_services_running.orig");
 
-    $commands[$counter]="cp $ins_pkg_dir/bin/orcallator_running $ins_pkg_dir/bin/orcallator_running.orig"; $counter++;
-    $commands[$counter]="cat $ins_pkg_dir/bin/orcallator_running.orig |sed 's,$real_install_dir/orca/var/orcallator,/var/orca,' > $ins_pkg_dir/bin/orcallator_running"; $counter++;
-    $commands[$counter]="rm $ins_pkg_dir/bin/orcallator_running.orig"; $counter++;
+    push(@commands,"cp $ins_pkg_dir/bin/orcallator_running $ins_pkg_dir/bin/orcallator_running.orig");
+    push(@commands,"cat $ins_pkg_dir/bin/orcallator_running.orig |sed 's,$real_install_dir/orca/var/orcallator,/var/orca,' > $ins_pkg_dir/bin/orcallator_running");
+    push(@commands,"rm $ins_pkg_dir/bin/orcallator_running.orig");
 
-    $commands[$counter]="cp $ins_pkg_dir/bin/start_orca_services $ins_pkg_dir/bin/start_orca_services.orig"; $counter++;
-    $commands[$counter]="cat $ins_pkg_dir/bin/start_orca_services.orig |sed 's,$real_install_dir/orca/var,/var/orca,' > $ins_pkg_dir/bin/start_orca_services"; $counter++;
-    $commands[$counter]="rm $ins_pkg_dir/bin/start_orca_services.orig"; $counter++;
+    push(@commands,"cp $ins_pkg_dir/bin/start_orca_services $ins_pkg_dir/bin/start_orca_services.orig");
+    push(@commands,"cat $ins_pkg_dir/bin/start_orca_services.orig |sed 's,$real_install_dir/orca/var,/var/orca,' > $ins_pkg_dir/bin/start_orca_services");
+    push(@commands,"rm $ins_pkg_dir/bin/start_orca_services.orig");
 
-    $commands[$counter]="cp $ins_pkg_dir/bin/start_orcallator $ins_pkg_dir/bin/start_orcallator.orig"; $counter++;
-    $commands[$counter]="cat $ins_pkg_dir/bin/start_orcallator.orig |sed 's,$real_install_dir/orca/var/orcallator,/var/orca,' > $ins_pkg_dir/bin/start_orcallator"; $counter++;
-    $commands[$counter]="rm $ins_pkg_dir/bin/start_orcallator.orig"; $counter++;
+    push(@commands,"cp $ins_pkg_dir/bin/start_orcallator $ins_pkg_dir/bin/start_orcallator.orig");
+    push(@commands,"cat $ins_pkg_dir/bin/start_orcallator.orig |sed 's,$real_install_dir/orca/var/orcallator,/var/orca,' > $ins_pkg_dir/bin/start_orcallator");
+    push(@commands,"rm $ins_pkg_dir/bin/start_orcallator.orig");
   }
-  #if ($option{'n'}=~/ruby/) {
-  #  $commands[$counter]="GEM_HOME=\"$ins_pkg_dir/lib/ruby/gems/1.9.1\" ; export GEM_HOME ; $ins_pkg_dir/bin/gem update"; $counter++;
-  #  $commands[$counter]="GEM_HOME=\"$ins_pkg_dir/lib/ruby/gems/1.9.1\" ; export GEM_HOME ; $ins_pkg_dir/bin/gem install puppet"; $counter++;
-  #  $commands[$counter]="GEM_HOME=\"$ins_pkg_dir/lib/ruby/gems/1.9.1\" ; export GEM_HOME ; $ins_pkg_dir/bin/gem install vagrant"; $counter++;
   #}
   if (-e "$source_dir_name") {
     if ($option{'n'}=~/orca/) {
@@ -934,6 +930,46 @@ sub compile_source {
     print "Source file $option{'s'} does not exist\n";
     exit;
   }
+  return;
+}
+
+# Create mog file for transmogrification
+
+sub create_mog {
+  my $spool_dir="$work_dir/spool";
+  my $mog_file="$spool_dir/$option{'p'}.mog";
+  my $version_string="set name=pkg.fmri value=application/$option{'p'}\@$option{'v'},1.0";
+  my $info_string="set name=pkg.description value=\"$option{'v'}\"";
+  my $summary_string="set name=pkg.summary value=";
+  my $arch_string+"set name=variant.arch value=$option{'a'}";
+  my $year_string=`date +%Y`;
+  chomp($year_string);
+  my $class_string="name=info.classification value=\"org.solaris.category.$year_string:Application";
+
+  if ($option{'n'}=~/wget/) {
+    $info_string="$info_string\"GNU Wget is a free software package for retrieving files using HTTP, HTTPS and FTP\"";
+  }
+  open MOG_FILE,">$mog_file";
+  print MOG_FILE "\n";
+  print MOG_FILE "\n";
+  print MOG_FILE "\n";
+  print MOG_FILE "\n";
+  close MOG_FILE;
+  return;
+}
+
+sub create_manifest {
+  my $ins_dir="$work_dir/ins";
+  my $spool_dir="$work_dir/spool";
+  my $manifest="$spool_dir/$option{'n'}.p5m";
+  my $manifest_1="$spool_dir/$option{'n'}.p5m.1";
+  my $manifest_2="$spool_dir/$option{'n'}.p5m.2";
+  my $mog_file="$spool_dir/$option{'p'}.mog";
+
+  system("cd $ins_dir ; pkgsend generate . |pkgfmt > $manifest_1");
+  system("cd $ins_dir ; pkgmogrify -DARCH=`uname -p` $manifest_1 $mog_file |pkgfmt > $manifest_2");
+  system("cd $ins_dir ; pkgdepend generate -md  . $manifest_2 |pkgfmt > $manifest");
+  system("cd $ins_dir ; pkgdepend resolve -m $manifest");
   return;
 }
 
