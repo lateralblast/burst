@@ -4,7 +4,7 @@ use Getopt::Std;
 use File::Basename;
 
 # Name:         burst (Build Unaided Rules Source Tool)
-# Version:      1.3.9
+# Version:      1.4.1
 # Release:      1
 # License:      Open Source
 # Group:        System
@@ -970,7 +970,7 @@ sub create_mog {
   print MOG_FILE "$arch_string\n";
   print MOG_FILE "$class_string\n";
   if (! -e "$source_dir_name/install.rb") {
-    print MOG_FILE "depend fmri=pkg:/runtime/ruby"
+    print MOG_FILE "depend fmri=pkg:/runtime/ruby-18"
   }
   close MOG_FILE;
   return;

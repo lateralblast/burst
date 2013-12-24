@@ -81,3 +81,5 @@
 # Cleaned up code and added intial Solaris 11 IPS package support
 # 1.4.0: Sat 21 Dec 2013 20:16:39 EST
 # Added support for ruby packages
+# 1.4.1: Tue 24 Dec 2013 12:34:00 EST
+# Fixed ruby dependency for IPS package manifest
