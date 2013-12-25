@@ -83,3 +83,5 @@
 # Added support for ruby packages
 # 1.4.1: Tue 24 Dec 2013 12:34:00 EST
 # Fixed ruby dependency for IPS package manifest
+# 1.4.2: Wed 25 Dec 2013 16:53:03 EST
+# Moved sources to an external file so it can be maintained easier

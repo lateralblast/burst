@@ -4,7 +4,7 @@ use Getopt::Std;
 use File::Basename;
 
 # Name:         burst (Build Unaided Rules Source Tool)
-# Version:      1.4.1
+# Version:      1.4.2
 # Release:      1
 # License:      Open Source
 # Group:        System
@@ -89,7 +89,7 @@ my $log_file;
 my $os_name=`uname`;
 my $os_arch=`uname -p`;
 my $os_ver=`uname -r`;
-my $options="Ba:b:c:d:e:f:i:l:n:p:r:s:u:v:w:hCD:V";
+my $options="BPa:b:c:d:e:f:i:l:n:p:r:s:u:v:w:hCD:R:V";
 
 if ($#ARGV == -1) {
   print_usage();
@@ -141,6 +141,8 @@ sub print_usage {
   print "-i: Install base dir (eg /usr/local)\n";
   print "-D: Verbose output (debug)\n";
   print "-B: Create a package from a binary install (eg SecurID PAM Agent)\n";
+  print "-P: Publih IPS to a repository (default is /export/repo/burst)\n";
+  print "-R: Repository URL (required to publish IPS to a specific repository)\n";
   print "\n";
   print "Example:\n";
   print "$script_name -d /tmp/$script_name -s /tmp/setoolkit-3.5.1.tar -p BLAHse";
@@ -161,6 +163,62 @@ sub get_script_version {
   return($script_version);
 }
 
+# Routing to create ZFS pool
+
+sub create_zpool {
+  my $repo_dir=$option{'R'};
+  my $zfs_dir;
+  my @zfs_dirs;
+  my $new_dir;
+  my $zpool_name="rpool";
+
+  $repo_dir=~s/^\///g;
+  if (! -e "$option{'R'}") {
+    print "Creating ZFS filesystem $zpool_name/$repo_dir\n";
+    @zfs_dirs=split(/\//,$repo_dir);
+    foreach $zfs_dir (@zfs_dirs) {
+      $new_dir="$new_dir/$zfs_dir";
+      if (! -e "$new_dir") {
+        system("zfs create rpool/$new_dir");
+      }
+    }
+  }
+  return;
+}
+
+# Create SMF service for repo
+
+sub check_smf_service {
+  my $repo_name=basename($option{'R'});
+  my $repo_check=`svcs -a |grep 'pkg/server' |grep $repo_name`;
+  my $repo_port="10082";
+
+  if ($repo_check!~/$repo_name/) {
+    system("pkgrepo create $option{'R'}");
+    system("pkgrepo set -s $option{'R'} publisher/prefix=$repo_name");
+    system("svccfg -s pkg/server add $repo_name");
+    system("svccfg -s pkg/server add pkg application");
+    system("svccfg -s pkg/server:$repo_name setprop pkg/port=10082");
+    system("svccfg -s pkg/server:$repo_name setprop pkg/inst_root=$option{'R'}");
+    system("svccfg -s pkg/server:$repo_name setprop pkg/readonly=false");
+    system("svccfg -s pkg/server:$repo_name addpg general framework");
+    system("svccfg -s pkg/server:$repo_name addpropvalue general/complete astring: $repo_name");
+    system("svccfg -s pkg/server:$repo_name addpropvalue general/enabled boolean: true");
+    system("svcadm refresh pkg/server:$repo_name");
+    system("svcadm enable pkg/server:$repo_name");
+  }
+  return;
+}
+
+# Routine to publish IPS
+
+sub publish_ips {
+  my $ins_dir="$work_dir/ins";
+  my $spool_dir="$work_dir/spool";
+  system("cd $ins_dir ; pkgsend publish -s $option{'R'} -d . $spool_dir/$option{'n'}.p5m.res");
+  return;
+}
+
 # Call the functions to build a package
 
 check_env();
@@ -171,7 +229,15 @@ if ($os_name=~/SunOS/) {
   }
   if ($os_ver=~/5\.11/) {
     create_mog();
-    create_manifest();
+    create_ips();
+    if ($option{'P'}) {
+      if (!$option{'R'}) {
+        $option{'R'}="/export/repo/burst";
+        create_zpool();
+      }
+      check_smf_service();
+      publish_ips();
+    }
   }
   else {
     create_spool();
@@ -354,7 +420,9 @@ sub check_env {
       # If the source file, version and name have not been given
       # exit as there is not enough information to continue
       if (!$option{'C'}) {
+        print "\n";
         print "You must either specify the source file and/or the package name and version\n";
+        print "\n";
       }
       exit;
     }
@@ -575,33 +643,14 @@ sub populate_source_list {
 
   my @source_list;
   my $package_name=$option{'n'};
+  my $sources_file="sources";
 
   if ($package_name=~/bsl/) {
     $package_name="bash";
   }
-  push(@source_list,"http://mirror.internode.on.net/pub/OpenBSD/OpenSSH/portable/openssh-6.1p1.tar.gz");
-  push(@source_list,"http://www.openssl.org/source/openssl-1.0.1e.tar.gz");
-  push(@source_list,"http://www.orcaware.com/orca/pub/snapshots/orca-snapshot-r557.tar.bz2");
-  push(@source_list,"http://downloads.sourceforge.net/project/setoolkit/SE%20Toolkit/SE%20Toolkit%203.5.1/setoolkit-3.5.1.tar.gz");
-  push(@source_list,"http://www.cpan.org/src/5.0/perl-5.16.2.tar.gz");
-  push(@source_list,"ftp://ftp.gnu.org/gnu/bash/bash-4.2.tar.gz");
-  push(@source_list,"http://www.openwall.com/john/g/john-1.7.9.tar.gz");
-  push(@source_list,"http://ftp.gnu.org/gnu/patch/patch-2.7.1.tar.gz");
-  push(@source_list,"http://ftp.gnu.org/gnu/diffutils/diffutils-3.2.tar.gz");
-  push(@source_list,"http://zlib.net/zlib-1.2.7.tar.gz");
-  push(@source_list,"http://www.sudo.ws/sudo/dist/sudo-1.8.6p7.tar.gz");
-  push(@source_list,"ftp://ftp.gnu.org/gnu/wget/wget-1.14.tar.gz");
-  push(@source_list,"ftp://ftp.ruby-lang.org/pub/ruby/1.9/ruby-1.9.3-p392.tar.bz2");
-  push(@source_list,"http://production.cf.rubygems.org/rubygems/rubygems-2.0.2.tgz");
-  push(@source_list,"http://pyyaml.org/download/libyaml/yaml-0.1.4.tar.gz");
-  push(@source_list,"ftp://ftp.gnu.org/gnu/readline/readline-6.2.tar.gz");
-  push(@source_list,"ftp://ftp.gnu.org/gnu/gdbm/gdbm-1.10.tar.gz");
-  push(@source_list,"http://downloads.puppetlabs.com/puppet/puppet-3.4.0.tar.gz");
-  push(@source_list,"http://downloads.puppetlabs.com/facter/facter-1.6.17.tar.gz");
-  push(@source_list,"ftp://sourceware.org/pub/libffi/libffi-3.0.12.tar.gz");
-  push(@source_list,"http://downloads.puppetlabs.com/puppet/puppet-3.4.0.tar.gz");
-  push(@source_list,"http://downloads.puppetlabs.com/facter/facter-1.7.4.tar.gz");
-  push(@source_list,"http://downloads.puppetlabs.com/hiera/hiera-1.3.0.tar.gz");
+  if (-e "$sources_file") {
+    @source_list=`cat $sources_file`;
+  }
   return @source_list;
 }
 
@@ -613,6 +662,7 @@ sub get_source_version {
 
   @source_list=populate_source_list();
   foreach $source_url (@source_list) {
+    chomp($source_url);
     if ($source_url=~/$option{'n'}/) {
       $header=basename($source_url);
       ($header,$option{'v'})=split("$option{'n'}-",$header);
@@ -744,12 +794,36 @@ sub search_conf_list {
   return($command);
 }
 
+# Fix file and directory permissions
+
+sub fix_permissions {
+    my $ins_dir="$work_dir/ins";
+    my @permissions;
+    my $chmod_value;
+    my $chown_value;
+    my $dir_name;
+    my $permission;
+
+    push(@permissions,"0755,root:sys,$ins_dir/usr");
+    push(@permissions,"0755,root:sys,$ins_dir/etc");
+    push(@permissions,"0755,root:bin,$ins_dir/usr/ruby");
+    foreach $permission (@permissions) {
+      ($chmod_value,$chown_value,$dir_name)=split(/,/,$permission);
+      if (-e "$dir_name") {
+        system("chown $chown_value $dir_name");
+        system("chmod $chmod_value $dir_name");
+      }
+    }
+    return;
+}
+
 sub compile_source {
 
   my @commands;
   my $command;
   my $ins_dir="$work_dir/ins";
   my $src_dir="$work_dir/src";
+  my $spool_dir="$work_dir/spool";
   my $conf_string;
   my @files;
   my $file;
@@ -768,6 +842,24 @@ sub compile_source {
   # as much as possible
 
   determine_source_dir_name();
+  if (-e "$source_dir_name/install.rb") {
+    print "Found ruby installer\n";
+    if (-e "$ins_dir") {
+      if ($ins_dir=~/[A-z]/) {
+        print "Removing contents of $ins_dir\n";
+        system("rm -rf $ins_dir/*");
+      }
+    }
+    if (-e "$spool_dir") {
+      if ($spool_dir=~/[A-z]/) {
+        print "Removing contents of $spool_dir\n";
+        system("rm -rf $spool_dir/*");
+      }
+    }
+    system("cd $source_dir_name ; ./install.rb --destdir=$ins_dir --full");
+    fix_permissions();
+    return;
+  }
   if ($option{'n'}=~/openssh/) {
     if ($hpnssh eq 1) {
       $patch_file="$src_dir/openssh-6.1p1-hpn13v14.diff";
@@ -792,9 +884,7 @@ sub compile_source {
     push(@commands,"cat config-top.h.orig |sed 's,/\\* #define SYSLOG_HISTORY \\*/,#define SYSLOG_HISTORY,' > config-top.h");
     push(@commands,"rm config-top.h.orig");
   }
-  if (! -e "$source_dir_name/install.rb") {
-    push(@commands,"make clean");
-  }
+  push(@commands,"make clean");
   if ($option{'n'}=~/john/) {
     if ($option{'a'}=~/i386/ ) {
       push(@commands,"cd src ; make solaris-x86-any-gcc");
@@ -804,9 +894,7 @@ sub compile_source {
     }
   }
   else {
-    if (! -e "$source_dir_name/install.rb") {
-      push(@commands,"LD_LIBRARY_PATH=\"\$LD_LIBRARY_PATH:$real_install_dir/lib\" ; export LD_LIBRARY_PATH; CFLAGS=\"\$CFLAGS -I$real_install_dir/include\" ; export CFLAGS ; CC=cc ; export CC ; make all");
-    }
+    push(@commands,"LD_LIBRARY_PATH=\"\$LD_LIBRARY_PATH:$real_install_dir/lib\" ; export LD_LIBRARY_PATH; CFLAGS=\"\$CFLAGS -I$real_install_dir/include\" ; export CFLAGS ; CC=cc ; export CC ; make all");
   }
   push(@commands,"cd $ins_dir ; rm -rf *");
   if ($option{'n'}=~/openssl/) {
@@ -818,12 +906,7 @@ sub compile_source {
       push(@commands,"(cd run ; /usr/sfw/bin/gtar -cpf - . )|(cd $ins_pkg_dir/bin ; /usr/sfw/bin/gtar -xpf - )");
     }
     else {
-      if (! -e "$source_dir_name/install.rb") {
-        push(@commands,"make DESTDIR=$ins_dir install");
-      }
-      else {
-        push(@commands,"cd $source_dir_name ; ./install.rb --destdir=$ins_dir --full")
-      }
+      push(@commands,"make DESTDIR=$ins_dir install");
     }
   }
   if ($option{'n'}=~/setoolkit/) {
@@ -969,31 +1052,26 @@ sub create_mog {
   print MOG_FILE "$summary_string\n";
   print MOG_FILE "$arch_string\n";
   print MOG_FILE "$class_string\n";
-  if (! -e "$source_dir_name/install.rb") {
-    print MOG_FILE "depend fmri=pkg:/runtime/ruby-18"
+  if ($option{'n'}=~/puppet/) {
+    print MOG_FILE "depend fmri=pkg://burst/application/facter type=require\n"
   }
   close MOG_FILE;
   return;
 }
 
-sub create_manifest {
+sub create_ips {
   my @commands;
   my $command;
   my $ins_dir="$work_dir/ins";
   my $spool_dir="$work_dir/spool";
-  my $manifest="$ins_dir/$option{'n'}.p5m";
+  my $manifest="$spool_dir/$option{'n'}.p5m";
   my $manifest_1="$spool_dir/$option{'n'}.p5m.1";
   my $manifest_2="$spool_dir/$option{'n'}.p5m.2";
   my $mog_file="$spool_dir/$option{'n'}.mog";
 
-  if (! -e "$source_dir_name/install.rb") {
-    push(@commands,"pkgsend generate . |pkgfmt > $manifest_1");
-  }
-  else {
-    push(@commands,"pkgsend generate . |pkgfmt > $manifest_1");
-  }
+  push(@commands,"pkgsend generate . |pkgfmt > $manifest_1");
   push(@commands,"pkgmogrify -DARCH=`uname -p` $manifest_1 $mog_file |pkgfmt > $manifest_2");
-  push(@commands,"pkgdepend generate -md  . $manifest_2 |pkgfmt > $manifest");
+  push(@commands,"pkgdepend generate -md  . $manifest_2 |pkgfmt  |sed 's/path=usr owner=root group=bin/path=usr owner=root group=sys/g' |sed 's/path=etc owner=root group=bin/path=usr owner=root group=sys/g' > $manifest");
   push(@commands,"pkgdepend resolve -m $manifest");
   foreach $command (@commands) {
     print_debug("Executing: $command","short");
@@ -1457,7 +1535,7 @@ sub create_spec {
   chomp($user_name);
   $ins_dir="$work_dir/BUILDROOT/$option{'n'}-$option{'v'}-1.$os_arch";
   chomp($ins_dir);
-  print_debug("Creating: $spec_file","long");
+  print_debug("Creating $spec_file","long");
   open SPEC_FILE,">$spec_file";
   print SPEC_FILE "Version:\t$option{'v'}\n";
   print SPEC_FILE "Name:\t\t$option{'n'}\n";
