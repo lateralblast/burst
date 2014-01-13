@@ -85,3 +85,5 @@
 # Fixed ruby dependency for IPS package manifest
 # 1.4.2: Wed 25 Dec 2013 16:53:03 EST
 # Moved sources to an external file so it can be maintained easier
+# 1.4.3: Mon 13 Jan 2014 13:26:08 EST
+# Added symlink support to RPM build find

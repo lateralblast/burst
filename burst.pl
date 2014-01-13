@@ -4,7 +4,7 @@ use Getopt::Std;
 use File::Basename;
 
 # Name:         burst (Build Unaided Rules Source Tool)
-# Version:      1.4.2
+# Version:      1.4.3
 # Release:      1
 # License:      Open Source
 # Group:        System
@@ -191,7 +191,7 @@ sub create_zpool {
 sub check_smf_service {
   my $repo_name=basename($option{'R'});
   my $repo_check=`svcs -a |grep 'pkg/server' |grep $repo_name`;
-  my $repo_port="10082";
+  my $repo_port="10085";
 
   if ($repo_check!~/$repo_name/) {
     system("pkgrepo create $option{'R'}");
@@ -783,6 +783,9 @@ sub search_conf_list {
       push(@commands,"openssh,CFLAGS=\"\$CFLAGS -I$real_install_dir/include -I/usr/sfw/include\" ; export CFLAGS ; CC=cc ; export CC ; ./configure --prefix=$real_install_dir --with-zlib --with-solaris-contracts --with-solaris-projects --with-tcp-wrappers=/usr/sfw --with-ssl-dir=$real_install_dir --with-privsep-user=sshd --with-md5-passwords --with-xauth=/usr/openwin/bin/xauth --with-mantype=man --with-pid-dir=/var/run --with-pam --with-audit=bsm --enable-shared");
     }
     push(@commands,"ruby,CC=cc ; export CC ; ./configure --prefix=$real_install_dir --enable-shared");
+    if ($option{'n'}=~/lftp/) {
+      push(@commands,"lftp,CC=cc ; export CC ; ./configure --prefix=$real_install_dir --enable-shared --without-gnutls");
+    }
   }
   foreach $command (@commands) {
     ($package,$command)=split(",",$command);
@@ -1644,7 +1647,7 @@ sub create_spec {
   print SPEC_FILE "%files\n";
   print SPEC_FILE "%defattr(-,root,root)\n";
   if ($option{'n'}=~/rsa/) {
-    @file_array=`cd $ins_dir ; find . -type f |sed 's/^\.//g'`;
+    @file_array=`cd $ins_dir ; find . -type f -o -type s |sed 's/^\.//g'`;
     foreach $file_name (@file_array) {
       print SPEC_FILE "$file_name";
     }
