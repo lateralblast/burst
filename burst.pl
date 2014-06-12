@@ -1,12 +1,10 @@
 #!/usr/bin/perl
-use strict;
-use Getopt::Std;
-use File::Basename;
 
-# Name:         burst (Build Unaided Rules Source Tool)
+# Name:         burst (Build Unaided Rapid Source Tool)
 # Version:      1.4.3
 # Release:      1
-# License:      Open Source
+# License:      CC-BA (Creative Commons By Attrbution)
+#               http://creativecommons.org/licenses/by/4.0/legalcode
 # Group:        System
 # Source:       N/A
 # URL:          http://lateralblast.com.au/
@@ -63,7 +61,12 @@ use File::Basename;
 # handling, eg post handling of the Makefile
 #
 
+use strict;
+use Getopt::Std;
+use File::Basename;
+
 # If you want HPN patch applied set this variable to 1
+
 my $hpnssh=1;
 
 # Set directory owner user and group
