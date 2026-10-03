@@ -10,6 +10,10 @@ A packaging tool for Solaris (PKG and IPS) and Linux (RPM).
 
 BURST builds a package from a source tarball. It will try to guess the package name and version from the tarball name.
 
+## Version
+
+Current version: **1.7.5** (see [CHANGELOG.md](CHANGELOG.md)).
+
 ## Status
 
 > [!WARNING]
