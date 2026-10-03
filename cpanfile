@@ -1,4 +1,5 @@
-# burst.pl only uses core modules; no CPAN installs are required.
+# burst.pl only uses core modules, which are normally already installed.
+# If any are missing, burst.pl installs them itself with cpanm or cpan at startup.
 # Pragmas and modules used: strict, Getopt::Std, File::Basename
 
 requires 'perl', '5.006';

@@ -1,7 +1,7 @@
 #!/usr/bin/perl
 
 # Name:         burst (Build Unaided Rapid Source Tool)
-# Version:      1.7.3
+# Version:      1.7.4
 # Release:      1
 # License:      CC BY-NC-SA 4.0 (Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International)
 #               https://creativecommons.org/licenses/by-nc-sa/4.0/legalcode
@@ -60,6 +60,38 @@
 # If the package does not support DESTDIR then you will need to add special
 # handling, eg post handling of the Makefile
 #
+
+# Install any required perl modules that are missing
+# This runs at compile time, before the modules below are loaded
+# Uses cpanm if available, otherwise falls back to cpan
+
+BEGIN {
+  my @modules=("Getopt::Std","File::Basename");
+  my @missing=grep { !eval "require $_; 1" } @modules;
+  if (@missing) {
+    my $installer="";
+    foreach my $bin ("cpanm","cpan") {
+      my $path=`which $bin 2>/dev/null`;
+      chomp($path);
+      if ($path ne "") {
+        $installer=$path;
+        last;
+      }
+    }
+    if ($installer eq "") {
+      print STDERR "Missing perl modules: ".join(", ",@missing)."\n";
+      print STDERR "Neither cpanm nor cpan found to install them\n";
+      exit(1);
+    }
+    foreach my $module (@missing) {
+      print "Installing perl module $module\n";
+      if (system("$installer $module") != 0 || !eval "require $module; 1") {
+        print STDERR "Failed to install perl module $module\n";
+        exit(1);
+      }
+    }
+  }
+}
 
 use strict;
 use Getopt::Std;

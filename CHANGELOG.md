@@ -4,6 +4,10 @@ All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.7.4] - 2026-10-03
+
+- Added a compile-time check that installs missing perl modules (Getopt::Std, File::Basename) with cpanm or cpan
+
 ## [1.7.3] - 2026-10-03
 
 - Added a README status section noting that recent changes need testing
