@@ -1,10 +1,10 @@
 #!/usr/bin/perl
 
 # Name:         burst (Build Unaided Rapid Source Tool)
-# Version:      1.4.3
+# Version:      1.7.3
 # Release:      1
-# License:      CC-BA (Creative Commons By Attrbution)
-#               http://creativecommons.org/licenses/by/4.0/legalcode
+# License:      CC BY-NC-SA 4.0 (Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International)
+#               https://creativecommons.org/licenses/by-nc-sa/4.0/legalcode
 # Group:        System
 # Source:       N/A
 # URL:          http://lateralblast.com.au/
@@ -92,13 +92,16 @@ my $log_file;
 my $os_name=`uname`;
 my $os_arch=`uname -p`;
 my $os_ver=`uname -r`;
+my $fetch_attempted=0;
 my $options="BPa:b:c:d:e:f:i:l:n:p:r:s:u:v:w:hCD:R:V";
 
 if ($#ARGV == -1) {
   print_usage();
+  exit;
 }
 else {
   getopts($options,\%option);
+  check_options();
 }
 
 # IF given -h print help
@@ -110,21 +113,38 @@ if ($option{'h'}) {
 
 if ($option{'C'}) {
   check_env();
+  print "Environment check complete\n";
   exit;
 }
 
 if ($option{'D'}) {
   $log_file=$option{'D'};
   if (-e "$log_file") {
-    system("rm $log_file");
-    system("touch $log_file");
+    unlink($log_file);
   }
-  open LOG_FILE,">$log_file";
+  open(LOG_FILE,">$log_file") or die "Cannot write $log_file: $!\n";
 }
 
 if ($option{'V'}) {
   print_version();
   exit;
+}
+
+# Paths and names end up in shell commands, so only allow safe characters
+
+sub check_options {
+  my $key;
+  my $value;
+
+  foreach $key ('w','s','R','i','D','n','v','p','b','a','r') {
+    $value=$option{$key};
+    if ((defined($value))&&($value!~/^[A-Za-z0-9_.\/+:,@%=-]+$/)) {
+      print "Invalid characters in option -$key: $value\n";
+      print "Only letters, numbers and the characters _ . / + : , @ % = - are allowed\n";
+      exit 1;
+    }
+  }
+  return;
 }
 
 sub print_usage {
@@ -142,13 +162,21 @@ sub print_usage {
   print "-c: Category (default is application)\n";
   print "-e: Email address of package maintainer\n";
   print "-i: Install base dir (eg /usr/local)\n";
-  print "-D: Verbose output (debug)\n";
+  print "-D: Verbose output (debug), also written to the given log file\n";
+  print "-d: Package description (used as the RPM summary)\n";
+  print "-f: Source URL (used as the RPM Source0)\n";
+  print "-l: License (default is GPL)\n";
+  print "-r: OS release (eg 10 for Solaris 10, default is detected)\n";
+  print "-u: Project URL (used as the RPM URL)\n";
+  print "-v: Source version\n";
+  print "-C: Check the environment and exit\n";
+  print "-V: Display script version\n";
   print "-B: Create a package from a binary install (eg SecurID PAM Agent)\n";
-  print "-P: Publih IPS to a repository (default is /export/repo/burst)\n";
-  print "-R: Repository URL (required to publish IPS to a specific repository)\n";
+  print "-P: Publish IPS to a repository (default is /export/repo/burst)\n";
+  print "-R: Repository path or URL (required to publish IPS to a specific repository)\n";
   print "\n";
   print "Example:\n";
-  print "$script_name -d /tmp/$script_name -s /tmp/setoolkit-3.5.1.tar -p BLAHse";
+  print "$script_name -w /tmp/$script_name -s /tmp/setoolkit-3.5.1.tar -p BLAHse";
   print "\n";
   print "\n";
   return;
@@ -180,9 +208,9 @@ sub create_zpool {
     print "Creating ZFS filesystem $zpool_name/$repo_dir\n";
     @zfs_dirs=split(/\//,$repo_dir);
     foreach $zfs_dir (@zfs_dirs) {
-      $new_dir="$new_dir/$zfs_dir";
-      if (! -e "$new_dir") {
-        system("zfs create rpool/$new_dir");
+      $new_dir=($new_dir)?"$new_dir/$zfs_dir":$zfs_dir;
+      if (! -e "/$new_dir") {
+        run_command("zfs create rpool/$new_dir",1);
       }
     }
   }
@@ -194,14 +222,14 @@ sub create_zpool {
 sub check_smf_service {
   my $repo_name=basename($option{'R'});
   my $repo_check=`svcs -a |grep 'pkg/server' |grep $repo_name`;
-  my $repo_port="10085";
+  my $repo_port="10082";
 
   if ($repo_check!~/$repo_name/) {
-    system("pkgrepo create $option{'R'}");
+    run_command("pkgrepo create $option{'R'}",1);
     system("pkgrepo set -s $option{'R'} publisher/prefix=$repo_name");
     system("svccfg -s pkg/server add $repo_name");
     system("svccfg -s pkg/server add pkg application");
-    system("svccfg -s pkg/server:$repo_name setprop pkg/port=10082");
+    system("svccfg -s pkg/server:$repo_name setprop pkg/port=$repo_port");
     system("svccfg -s pkg/server:$repo_name setprop pkg/inst_root=$option{'R'}");
     system("svccfg -s pkg/server:$repo_name setprop pkg/readonly=false");
     system("svccfg -s pkg/server:$repo_name addpg general framework");
@@ -218,7 +246,7 @@ sub check_smf_service {
 sub publish_ips {
   my $ins_dir="$work_dir/ins";
   my $spool_dir="$work_dir/spool";
-  system("cd $ins_dir ; pkgsend publish -s $option{'R'} -d . $spool_dir/$option{'n'}.p5m.res");
+  run_command("cd $ins_dir && pkgsend publish -s $option{'R'} -d . $spool_dir/$option{'n'}.p5m.res",1);
   return;
 }
 
@@ -265,6 +293,9 @@ sub check_env {
   my @dir_names;
   my $dir_name;
   my $pam_lib;
+  my $source_copy_dir;
+  my $file_n;
+  my $file_v;
 
   chomp($cc_bin);
   chomp($home_dir);
@@ -385,8 +416,12 @@ sub check_env {
   foreach $dir_name (@dir_names) {
     if (! -e "$work_dir/$dir_name") {
       print "Creating directory $work_dir/$dir_name...\n";
-      system("mkdir -p $work_dir/$dir_name");
+      run_command("mkdir -p $work_dir/$dir_name",1);
     }
+  }
+  if (($option{'C'})&&(!$option{'n'})&&(!$option{'s'})) {
+    # Just checking the environment, no source to check
+    return;
   }
   if (!$option{'s'}) {
     if ($option{'n'}=~/rsa/) {
@@ -422,12 +457,10 @@ sub check_env {
     if ((!$option{'n'})||(!$option{'v'})) {
       # If the source file, version and name have not been given
       # exit as there is not enough information to continue
-      if (!$option{'C'}) {
-        print "\n";
-        print "You must either specify the source file and/or the package name and version\n";
-        print "\n";
-      }
-      exit;
+      print "\n";
+      print "You must either specify the source file and/or the package name and version\n";
+      print "\n";
+      exit 1;
     }
     else {
       # If not given a source file name, try to determine it
@@ -473,18 +506,21 @@ sub check_env {
           }
         }
         else {
-          ($option{'n'},$option{'v'})=split('\-',$source_file_name);
-          $option{'v'}=~s/\.tar\.gz//g;
-          $option{'v'}=~s/\.tar//g;
-          $option{'v'}=~s/\.tgz//g;
+          ($file_n,$file_v)=split_source_file_name($source_file_name);
+          $option{'n'}||=$file_n;
+          $option{'v'}||=$file_v;
         }
       }
     }
     ($source_file_name,$source_dir_name)=fileparse($option{'s'});
-    if (!-e "$work_dir/src/$source_file_name") {
-      system("cp $option{'s'} $work_dir/src/$source_file_name");
+    $source_copy_dir="$work_dir/src";
+    if ($os_name=~/Linux/) {
+      $source_copy_dir="$work_dir/SOURCES";
     }
-    $option{'s'}="$work_dir/src/$source_file_name";
+    if (!-e "$source_copy_dir/$source_file_name") {
+      run_command("cp $option{'s'} $source_copy_dir/$source_file_name",1);
+    }
+    $option{'s'}="$source_copy_dir/$source_file_name";
   }
   if ((!$option{'n'})||(!$option{'v'})) {
     ($source_file_name,$source_dir_name)=fileparse($option{'s'});
@@ -496,10 +532,9 @@ sub check_env {
     }
     else {
       if (!$option{'B'}) {
-        ($option{'n'},$option{'v'})=split('\-',$source_file_name);
-        $option{'v'}=~s/\.tar\.gz//g;
-        $option{'v'}=~s/\.tar//g;
-        $option{'v'}=~s/\.tgz//g;
+        ($file_n,$file_v)=split_source_file_name($source_file_name);
+        $option{'n'}||=$file_n;
+        $option{'v'}||=$file_v;
       }
     }
   }
@@ -548,9 +583,26 @@ sub remove_extensions {
   push(@extensions,".tbz2");
   push(@extensions,".tar");
   foreach $extension (@extensions) {
-    $file_name=~s/$extension//g;
+    $file_name=~s/\Q$extension\E$//;
   }
   return($file_name);
+}
+
+# Split a source file name like name-1.2.3.tar.gz into name and version
+# Handles dashes in the version and orca snapshots (orca-snapshot-r557.tar.bz2)
+
+sub split_source_file_name {
+  my $file_name=remove_extensions($_[0]);
+  my $name;
+  my $version;
+
+  if ($file_name=~/^(.+?)-(?:snapshot-r)?(\d.*)$/) {
+    ($name,$version)=($1,$2);
+  }
+  else {
+    ($name,$version)=split('\-',$file_name);
+  }
+  return($name,$version);
 }
 
 sub determine_source_file_name {
@@ -590,10 +642,16 @@ sub determine_source_file_name {
     }
     if (-e "$file_name_base.$extension") {
       $option{'s'}="$file_name_base.$extension";
+      $fetch_attempted=0;
       return;
     }
   }
   print "Source file not found\n";
+  if ($fetch_attempted) {
+    print "Unable to fetch source file for $option{'n'}-$option{'v'}\n";
+    exit;
+  }
+  $fetch_attempted=1;
   print "Attempting to fetch source\n";
   get_source_file();
   determine_source_file_name();
@@ -645,16 +703,34 @@ sub check_deps {
 sub populate_source_list {
 
   my @source_list;
+  my $sources_file=dirname($0)."/sources";
+
+  # Look next to the script first, then in the current directory
+
+  if (! -e "$sources_file") {
+    $sources_file="sources";
+  }
+  if (-e "$sources_file") {
+    if (open(SOURCES_FILE,"<$sources_file")) {
+      @source_list=<SOURCES_FILE>;
+      close(SOURCES_FILE);
+    }
+  }
+  else {
+    print "Sources file not found\n";
+  }
+  return @source_list;
+}
+
+# The name used in the sources file, eg bsl is bash with syslog support
+
+sub get_source_package_name {
   my $package_name=$option{'n'};
-  my $sources_file="sources";
 
   if ($package_name=~/bsl/) {
     $package_name="bash";
   }
-  if (-e "$sources_file") {
-    @source_list=`cat $sources_file`;
-  }
-  return @source_list;
+  return($package_name);
 }
 
 sub get_source_version {
@@ -662,14 +738,16 @@ sub get_source_version {
   my @source_list;
   my $source_url;
   my $header;
+  my $package_name=get_source_package_name();
 
   @source_list=populate_source_list();
   foreach $source_url (@source_list) {
     chomp($source_url);
-    if ($source_url=~/$option{'n'}/) {
+    if ($source_url=~/\Q$package_name\E/) {
       $header=basename($source_url);
-      ($header,$option{'v'})=split("$option{'n'}-",$header);
+      ($header,$option{'v'})=split(/\Q$package_name\E-/,$header);
       $option{'v'}=remove_extensions($option{'v'});
+      $option{'v'}=~s/^snapshot-r//;
       print "Setting package version to $option{'v'}\n";
       return;
     }
@@ -685,6 +763,7 @@ sub get_source_file {
   my $src_dir;
   my $wget_test;
   my $file_name;
+  my $package_name=get_source_package_name();
 
   if ($os_name=~/SunOS/) {
     $src_dir="$work_dir/src";
@@ -694,14 +773,15 @@ sub get_source_file {
   }
   @source_list=populate_source_list();
   foreach $source_url (@source_list) {
-    if ($source_url=~/$option{'n'}-$option{'v'}/) {
+    chomp($source_url);
+    if ($source_url=~/\Q$package_name\E-(?:snapshot-r)?\Q$option{'v'}\E/) {
       $wget_test=`which wget`;
       if ($wget_test!~/no wget/) {
         $file_name=basename($source_url);
         if (! -e "$src_dir/$file_name") {
-          $command="cd $src_dir ; wget $source_url";
+          $command="cd $src_dir && wget $source_url";
           print_debug("Executing: $command","long");
-          system("$command");
+          run_command($command,0);
         }
       }
       else {
@@ -719,7 +799,7 @@ sub extract_source {
 
   determine_source_dir_name();
 
-  if ($source_dir_name!~/src\/$/) {
+  if (($source_dir_name!~/src\/?$/)&&($source_dir_name!~/\/\.+$/)) {
     $command="rm -rf $source_dir_name";
     print_debug("Executing: $command","long");
     system("$command");
@@ -727,16 +807,20 @@ sub extract_source {
   if (-e "$option{'s'}") {
     $file_type=`file $option{'s'}`;
     chomp($file_type);
-    if ($file_type=~/USTAR tar archive/) {
-      $command="cd $work_dir/src ; /usr/sfw/bin/gtar -xf $option{'s'}";
-    }
     if ($file_type=~/gzip compressed data/) {
-      $command="cd $work_dir/src ; gzcat $option{'s'} | /usr/sfw/bin/gtar -xf -";
+      $command="cd $work_dir/src && gzcat $option{'s'} | /usr/sfw/bin/gtar -xf -";
     }
-    if ($file_type=~/bzip2 compressed data/) {
-      $command="cd $work_dir/src ; bzcat $option{'s'} | /usr/sfw/bin/gtar -xf -";
+    elsif ($file_type=~/bzip2 compressed data/) {
+      $command="cd $work_dir/src && bzcat $option{'s'} | /usr/sfw/bin/gtar -xf -";
     }
-    system("$command");
+    elsif ($file_type=~/tar archive/) {
+      $command="cd $work_dir/src && /usr/sfw/bin/gtar -xf $option{'s'}";
+    }
+    else {
+      print "Unsupported archive type: $file_type\n";
+      exit 1;
+    }
+    run_command($command,1);
     print_debug("Executing: $command","long");
   }
   else {
@@ -749,6 +833,7 @@ sub extract_source {
 sub determine_source_dir_name {
 
   my $dir_name=`/usr/sfw/bin/gtar -tf $option{'s'} |head -1`;
+  $dir_name=~s/^(\.\/)+//;
   my @values=split("/",$dir_name);
   my $conf_string;
 
@@ -765,8 +850,15 @@ sub search_conf_list {
   my $package;
   my $conf_string;
 
+  my $openssl_target="solaris-x86-cc";
+  my $perl_64bit="-Duse64bitint";
+
+  if ($option{'a'}=~/sparc/) {
+    $openssl_target="solaris-sparcv9-cc";
+    $perl_64bit="-Duse64bitall -Duse64bitint";
+  }
   push(@commands,"wget,CC=\"cc\" ; export CC ; ./configure --prefix=$real_install_dir --with-ssl=openssl --with-libssl-prefix=$real_install_dir");
-  push(@commands,"openssl,CC=\"cc\" ; export CC ; ./Configure --prefix=$real_install_dir --openssldir=$real_install_dir zlib-dynamic threads shared solaris-x86-cc");
+  push(@commands,"openssl,CC=\"cc\" ; export CC ; ./Configure --prefix=$real_install_dir --openssldir=$real_install_dir zlib-dynamic threads shared $openssl_target");
   push(@commands,"sudo,CC=\"cc\" ; export CC ; ./configure --prefix=$real_install_dir --enable-pam");
   if ($os_name=~/SunOS/) {
     if ($option{'n'}=~/orca|setoolkit/) {
@@ -778,7 +870,7 @@ sub search_conf_list {
         push(@commands,"setoolkit,CC=\"CC\" ; export CC ; ./configure --prefix=$real_install_dir --with-se-include-dir=$real_install_dir/include --with-se-examples-dir=$real_install_dir/examples");
       }
     }
-    push(@commands,"perl,CC=\"gcc\" ; export CC ; ./Configure -des -Dusethreads -Dcc=\"gcc -m32\" -Dprefix=$real_install_dir -Dusedttrace -Dusefaststdio -Duseshrplib -Dusevfork -Dless=less -Duse64bitall -Duse64bitint -Dpager=more");
+    push(@commands,"perl,CC=\"gcc\" ; export CC ; ./Configure -des -Dusethreads -Dcc=\"gcc -m32\" -Dprefix=$real_install_dir -Dusedttrace -Dusefaststdio -Duseshrplib -Dusevfork -Dless=less $perl_64bit -Dpager=more");
     if ($option{'r'}!~/9|10|11/) {
       push(@commands,"ssh,CFLAGS=\"\$CFLAGS -I$real_install_dir/include\" ; export CFLAGS ; CC=cc ; export CC ; ./configure --prefix=$real_install_dir --with-zlib --with-solaris-contracts --with-solaris-projects --with-tcp-wrappers=$real_install_dir --with-ssl-dir=$real_install_dir --with-privsep-user=sshd --with-md5-passwords --with-xauth=/usr/openwin/bin/xauth --with-mantype=man --with-pid-dir=/var/run --with-pam --with-audit=bsm --enable-shared");
     }
@@ -862,7 +954,7 @@ sub compile_source {
         system("rm -rf $spool_dir/*");
       }
     }
-    system("cd $source_dir_name ; ./install.rb --destdir=$ins_dir --full");
+    run_command("cd $source_dir_name && ./install.rb --destdir=$ins_dir --full",1);
     fix_permissions();
     return;
   }
@@ -871,7 +963,7 @@ sub compile_source {
       $patch_file="$src_dir/openssh-6.1p1-hpn13v14.diff";
       if (! -e "$patch_file") {
         if (-e "$patch_file.gz") {
-          system("cd $src_dir ; gzip -d $patch_file.gz");
+          system("cd $src_dir && gzip -d $patch_file.gz");
         }
       }
       if ( -e "$patch_file") {
@@ -902,7 +994,7 @@ sub compile_source {
   else {
     push(@commands,"LD_LIBRARY_PATH=\"\$LD_LIBRARY_PATH:$real_install_dir/lib\" ; export LD_LIBRARY_PATH; CFLAGS=\"\$CFLAGS -I$real_install_dir/include\" ; export CFLAGS ; CC=cc ; export CC ; make all");
   }
-  push(@commands,"cd $ins_dir ; rm -rf *");
+  push(@commands,"cd $ins_dir && rm -rf ./*");
   if ($option{'n'}=~/openssl/) {
     push(@commands,"make INSTALL_PREFIX=$ins_dir install");
   }
@@ -1022,13 +1114,13 @@ sub compile_source {
       # Fix up problem with handling $@ in orca configure script
       if ( -e "$source_dir_name/configure") {
         system ("cd $source_dir_name ; cp ./configure ./configure.old ; cat ./configure |sed 's/^ORCA_CONFIGURE_COMMAND_LINE/#&/g' > ./configure.new ; cat ./configure.new > ./configure");
-        system ("cd $source_dir_name ; $command");
+        run_command("cd $source_dir_name && $command",0);
       }
     }
     print_debug("Executing: cd $source_dir_name","long");
     foreach $command (@commands) {
       print_debug("Executing: $command","short");
-      system ("cd $source_dir_name ; $command");
+      run_command("cd $source_dir_name && $command",($command!~/^make clean/));
     }
   }
   else {
@@ -1046,13 +1138,13 @@ sub create_mog {
   my $version_string="set name=pkg.fmri value=application/$option{'n'}\@$option{'v'},1.0";
   my $info_string="set name=pkg.description value=\"$option{'n'}\"";
   my $summary_string="set name=pkg.summary value=\"$option{'n'} $option{'v'}\"";
-  my $arch_string+"set name=variant.arch value=$option{'a'}";
+  my $arch_string="set name=variant.arch value=$option{'a'}";
   my $class_string="set name=info.classification value=\"org.opensolaris.category.2008:Applications/System Utilities\"";
 
   if ($option{'n'}=~/wget/) {
     $summary_string="set name=pkg.summary value=\"GNU Wget is a free software package for retrieving files using HTTP, HTTPS and FTP\"";
   }
-  open MOG_FILE,">$mog_file";
+  open(MOG_FILE,">$mog_file") or die "Cannot write $mog_file: $!\n";
   print MOG_FILE "$version_string\n";
   print MOG_FILE "$info_string\n";
   print MOG_FILE "$summary_string\n";
@@ -1077,11 +1169,11 @@ sub create_ips {
 
   push(@commands,"pkgsend generate . |pkgfmt > $manifest_1");
   push(@commands,"pkgmogrify -DARCH=`uname -p` $manifest_1 $mog_file |pkgfmt > $manifest_2");
-  push(@commands,"pkgdepend generate -md  . $manifest_2 |pkgfmt  |sed 's/path=usr owner=root group=bin/path=usr owner=root group=sys/g' |sed 's/path=etc owner=root group=bin/path=usr owner=root group=sys/g' > $manifest");
+  push(@commands,"pkgdepend generate -md  . $manifest_2 |pkgfmt  |sed 's/path=usr owner=root group=bin/path=usr owner=root group=sys/g' |sed 's/path=etc owner=root group=bin/path=etc owner=root group=sys/g' > $manifest");
   push(@commands,"pkgdepend resolve -m $manifest");
   foreach $command (@commands) {
     print_debug("Executing: $command","short");
-    system ("cd $ins_dir ; $command");
+    run_command("cd $ins_dir && $command",1);
   }
   return;
 }
@@ -1118,6 +1210,7 @@ sub create_spool {
   my @file_contents;
   my $script_name;
   my $command;
+  my %proto_scripts;
   my @script_names=('preinstall','postinstall','preremove','postremove','checkinstall');
   my $lib_dir;
 
@@ -1149,13 +1242,13 @@ sub create_spool {
   $group_name=~s/\)//g;
   if ((-e "$spool_dir")&&($spool_dir=~/[A-z]/)) {
     print "Cleaning up $spool_dir...\n";
-    system("cd $spool_dir ; rm -rf *");
+    system("cd $spool_dir && rm -rf ./*");
   }
   if ($option{'B'}) {
     if ($option{'p'}=~/rsa/) {
       if ($user_name!~/root/) {
         if (! -e "$spool_dir/uninstall_pam.sh") {
-          print "Execute the following commands as root and re-run scripr:\n";
+          print "Execute the following commands as root and re-run script:\n";
           print "mkdir -p $ins_dir/opt/pam\n";
           print "(cd /opt/pam ; tar -cpf - . )|( cd $ins_dir/opt/pam ; tar -xpf - )\n";
           print "find $lib_dir -name \"*securid*\" |cpio -pdm $ins_dir\n";
@@ -1192,7 +1285,7 @@ sub create_spool {
     print_debug("$basedir_string","short");
     print_debug("$classes_string","short");
   }
-  open PROTO_FILE,">$proto_file";
+  open(PROTO_FILE,">$proto_file") or die "Cannot write $proto_file: $!\n";
   print PROTO_FILE "i pkginfo=./pkginfo\n";
   if ($option{'n'}=~/rsa/) {
     print PROTO_FILE "1 d none opt/pam 0700 root bin\n";
@@ -1205,20 +1298,15 @@ sub create_spool {
     print PROTO_FILE "1 d none opt/pam/lib/64bit 0700 root bin\n";
     print PROTO_FILE "1 d none var/ace 0755 root sys\n";
   }
-  foreach $script_name (@script_names) {
-    if (-e "$script_dir/$option{'n'}.$script_name") {
-      system("cp $script_dir/$option{'n'}.$script_name $spool_dir/$script_name");
-      system("chmod +x $spool_dir/$script_name");
-      print PROTO_FILE "i $script_name=./$script_name\n";
-    }
-  }
   if ($option{'n'}=~/orca|openssh|bsl|rsa/) {
     # Add postinstall and preremove scripts to package
     print PROTO_FILE "i postinstall=./postinstall\n";
     print PROTO_FILE "i preremove=./preremove\n";
-    open POSTINSTALL_FILE,">$postinstall_file";
+    $proto_scripts{'postinstall'}=1;
+    $proto_scripts{'preremove'}=1;
+    open(POSTINSTALL_FILE,">$postinstall_file") or die "Cannot write $postinstall_file: $!\n";
     print POSTINSTALL_FILE "#!/bin/sh\n";
-    open PREREMOVE_FILE,">$preremove_file";
+    open(PREREMOVE_FILE,">$preremove_file") or die "Cannot write $preremove_file: $!\n";
     print PREREMOVE_FILE "#!/bin/sh\n";
     if ($option{'n'}=~/rsa/) {
       print PREREMOVE_FILE "rm /var/ace/sdopts.rec\n";
@@ -1245,7 +1333,7 @@ sub create_spool {
       print POSTINSTALL_FILE "fi\n";
       print POSTINSTALL_FILE "# Update /etc/syslog.conf\n";
       print POSTINSTALL_FILE "if [ -f \"/etc/syslog.conf\" ] ; then\n";
-      print POSTINSTALL_FILE "  if [ \"`cat /etc/syslog.conf | awk '{print \$2}' |grep '/var/log/userlog`\" != \"/var/log/userlog\" ]; then\n";
+      print POSTINSTALL_FILE "  if [ \"`cat /etc/syslog.conf | awk '{print \$2}' |grep '/var/log/userlog'`\" != \"/var/log/userlog\" ]; then\n";
       print POSTINSTALL_FILE "    echo \"user.info\t/var/log/userlog\" >> /etc/syslog.conf\n";
       print POSTINSTALL_FILE "    # Restart syslog.conf\n";
       print POSTINSTALL_FILE "    if [ \"`uname -r`\" != \"5.10\" ]; then\n";
@@ -1273,7 +1361,7 @@ sub create_spool {
       print PREREMOVE_FILE "fi\n";
       print PREREMOVE_FILE "# Update /etc/syslog.conf\n";
       print PREREMOVE_FILE "if [ -f \"/etc/syslog.conf\" ] ; then\n";
-      print PREREMOVE_FILE "  if [ \"`cat /etc/syslog.conf | awk '{print \$2|' |grep '/var/log/userlog'`\" = \"/var/log/userlog\" ]; then\n";
+      print PREREMOVE_FILE "  if [ \"`cat /etc/syslog.conf | awk '{print \$2}' |grep '/var/log/userlog'`\" = \"/var/log/userlog\" ]; then\n";
       print PREREMOVE_FILE "    if [ -f \"/etc/syslog.conf.prebsl\" ] ; then\n";
       print PREREMOVE_FILE "      rm /etc/syslog.conf.prebsl\n";
       print PREREMOVE_FILE "    fi\n";
@@ -1308,7 +1396,7 @@ sub create_spool {
       # and get postinstall script to install it
       if ($option{'n'}=~/orca/) {
         $init_file="$ins_pkg_dir/etc/$option{'n'}-client.xml";
-        open INIT_FILE,">$init_file";
+        open(INIT_FILE,">$init_file") or die "Cannot write $init_file: $!\n";
         print INIT_FILE "<?xml version=\"1.0\"?>\n";
         print INIT_FILE "<!DOCTYPE service_bundle SYSTEM \"/usr/share/lib/xml/dtd/service_bundle.dtd.1\">\n";
         print INIT_FILE "<service_bundle type='manifest' name='$option{'n'}:client'>";
@@ -1325,7 +1413,7 @@ sub create_spool {
       # and get postinstall script to install it
       if ($option{'n'}=~/orca|openssh/) {
         $init_file="$ins_pkg_dir/etc/$option{'n'}-server.xml";
-        open INIT_FILE,">$init_file";
+        open(INIT_FILE,">$init_file") or die "Cannot write $init_file: $!\n";
         print INIT_FILE "<?xml version=\"1.0\"?>\n";
         print INIT_FILE "<!DOCTYPE service_bundle SYSTEM \"/usr/share/lib/xml/dtd/service_bundle.dtd.1\">\n";
         print INIT_FILE "<service_bundle type='manifest' name='$option{'n'}:server'>";
@@ -1338,7 +1426,12 @@ sub create_spool {
         if ($option{'n'}=~/openssh/) {
           print INIT_FILE "<exec_method type='method' name='start'  exec='$real_install_dir/sbin/sshd' timeout_seconds=\"60\" />\n";
         }
-        print INIT_FILE "<exec_method type='method' name='stop'  exec='pkill -f $real_install_dir/sbin/sshd' timeout_seconds=\"60\" />\n";
+        if ($option{'n'}=~/orca/) {
+          print INIT_FILE "<exec_method type='method' name='stop'  exec='pkill -f $real_install_dir/bin/orca' timeout_seconds=\"60\" />\n";
+        }
+        if ($option{'n'}=~/openssh/) {
+          print INIT_FILE "<exec_method type='method' name='stop'  exec='pkill -f $real_install_dir/sbin/sshd' timeout_seconds=\"60\" />\n";
+        }
         print INIT_FILE "</service>\n";
         print INIT_FILE "</service_bundle>\n";
         close INIT_FILE;
@@ -1361,7 +1454,7 @@ sub create_spool {
       # and get postinstall script to install it
       if ($option{'n'}=~/orca|openssh/) {
         $init_file="$ins_pkg_dir/etc/$option{'n'}.init";
-        open INIT_FILE,">$init_file";
+        open(INIT_FILE,">$init_file") or die "Cannot write $init_file: $!\n";
         print INIT_FILE "#!/bin/sh\n";
         print INIT_FILE "\n";
         print INIT_FILE "case \"\$1\" in\n";
@@ -1442,6 +1535,16 @@ sub create_spool {
       print_debug(" @file_contents","short");
     }
   }
+  # Use any package specific scripts that were not generated above
+  # pkgmk looks for them relative to the install directory
+  foreach $script_name (@script_names) {
+    if ((!$proto_scripts{$script_name})&&(-e "$script_dir/$option{'n'}.$script_name")) {
+      run_command("cp $script_dir/$option{'n'}.$script_name $ins_dir/$script_name",1);
+      run_command("chmod 0755 $ins_dir/$script_name",0);
+      print PROTO_FILE "i $script_name=./$script_name\n";
+      $proto_scripts{$script_name}=1;
+    }
+  }
   close PROTO_FILE;
   if ($option{'B'}) {
     if ($option{'n'}=~/rsa/) {
@@ -1455,12 +1558,13 @@ sub create_spool {
     $command="cd $ins_dir ; find . -print |grep -v './pkginfo' |grep -v './prototype' |grep -v './postinstall' |grep -v './preremove' |grep -v './preinstall' |grep -v './postremove' |grep -v './checkinstall' |pkgproto | sed 's/$user_name $group_name/$dir_user $dir_group/g' >> $proto_file";
   }
   print_debug("Executing: $command","long");
-  system("$command");
-  open INFO_FILE,">$info_file";
+  run_command($command,1);
+  open(INFO_FILE,">$info_file") or die "Cannot write $info_file: $!\n";
   print INFO_FILE "$pkg_string\n";
   print INFO_FILE "$name_string\n";
   print INFO_FILE "$arch_string\n";
   print INFO_FILE "$version_string\n";
+  print INFO_FILE "$vendor_string\n";
   print INFO_FILE "$category_string\n";
   print INFO_FILE "$email_string\n";
   print INFO_FILE "$pstamp_string\n";
@@ -1484,9 +1588,9 @@ sub create_trans {
 
   if ((-e "$trans_dir")&&($trans_dir=~/[A-z]/)) {
     print "Cleaning up $trans_dir...\n";
-    system("cd $trans_dir ; rm -rf *");
+    system("cd $trans_dir && rm -rf ./*");
   }
-  $command="cd $ins_dir ; pkgmk -o -r . -d $spool_dir -f $proto_file";
+  $command="cd $ins_dir && pkgmk -o -r . -d $spool_dir -f $proto_file";
   print_debug("Prototype file contents:","long");
   @prototype=`cat $proto_file`;
   foreach $file_name (@prototype) {
@@ -1494,7 +1598,7 @@ sub create_trans {
     print_debug("$file_name","normal");
   }
   print_debug("Executing: $command","long");
-  system("$command");
+  run_command($command,1);
   return;
 }
 
@@ -1511,13 +1615,13 @@ sub create_pkg {
 
   if ($hpnssh eq 1) {
     $hpn_string=~s/ssh/hpnssh/g;
-    $command="cd $spool_dir ; pkgtrans $spool_dir $pkg_dir/$hpn_string-$option{'v'}-$option{'a'}-sol$option{'r'}.pkg $pkg_string";
+    $command="cd $spool_dir && pkgtrans $spool_dir $pkg_dir/$hpn_string-$option{'v'}-$option{'a'}-sol$option{'r'}.pkg $pkg_string";
   }
   else {
-    $command="cd $spool_dir ; pkgtrans $spool_dir $pkg_dir/$pkg_string-$option{'v'}-$option{'a'}-sol$option{'r'}.pkg $pkg_string";
+    $command="cd $spool_dir && pkgtrans $spool_dir $pkg_dir/$pkg_string-$option{'v'}-$option{'a'}-sol$option{'r'}.pkg $pkg_string";
   }
   print_debug("Executing: $command","long");
-  system("$command");
+  run_command($command,1);
   return;
 }
 
@@ -1542,7 +1646,7 @@ sub create_spec {
   $ins_dir="$work_dir/BUILDROOT/$option{'n'}-$option{'v'}-1.$os_arch";
   chomp($ins_dir);
   print_debug("Creating $spec_file","long");
-  open SPEC_FILE,">$spec_file";
+  open(SPEC_FILE,">$spec_file") or die "Cannot write $spec_file: $!\n";
   print SPEC_FILE "Version:\t$option{'v'}\n";
   print SPEC_FILE "Name:\t\t$option{'n'}\n";
   if ($option{'n'}=~/john/) {
@@ -1551,9 +1655,12 @@ sub create_spec {
   if ($option{'n'}=~/bsl/) {
     $option{'d'}="Bash compiled with syslog support";
   }
-  if ($option{'n'}) {
+  if ($option{'n'}=~/rsa/) {
    $option{'d'}="RSA SecurID PAM Agent";
    $option{'u'}="http://www.rsa.com";
+  }
+  if (!$option{'d'}) {
+    $option{'d'}=$option{'n'};
   }
   print SPEC_FILE "Summary:\t$option{'d'}\n";
   print SPEC_FILE "Release:\t1\n";
@@ -1602,7 +1709,7 @@ sub create_spec {
     if ($option{'n'}=~/bsl/) {
       print SPEC_FILE "patch -p0 < %{_topdir}/SOURCES/bash-%{version}-bashhist.c.patch\n";
       print SPEC_FILE "./configure --prefix=/opt/%{distribution}\n";
-      print SPEC_FILE "sed -i 's,/\* #define SYSLOG_HISTORY \*/,#define SYSLOG_HISTORY,' config-top.h\n";
+      print SPEC_FILE "sed -i 's,/\\* #define SYSLOG_HISTORY \\*/,#define SYSLOG_HISTORY,' config-top.h\n";
       print SPEC_FILE "make all\n";
     }
     print SPEC_FILE "\n";
@@ -1613,12 +1720,13 @@ sub create_spec {
     if ($option{'n'}=~/rsa/) {
       if ($user_name!~/root/) {
         if (! -e "$ins_dir/uninstall_pam.sh") {
-          print "Execute the following commands as root and re-run scripr:\n";
+          print "Execute the following commands as root and re-run script:\n";
           print "mkdir -p $ins_dir/opt/pam\n";
           print "(cd /opt/pam ; tar -cpf - . )|( cd $ins_dir/opt/pam ; tar -xpf - )\n";
           print "find /opt/pam |cpio -pdm $ins_dir\n";
-          print "find /etc -name sd_pam.conf \"*securid*\" |cpio -pdm $ins_dir\n";
-          print "find /var/ace -name stdconf.rec \"*securid*\" |cpio -pdm $ins_dir\n";
+          print "find $lib_dir -name \"*securid*\" |cpio -pdm $ins_dir\n";
+          print "find /etc -name sd_pam.conf |cpio -pdm $ins_dir\n";
+          print "find /var/ace -name sdconf.rec |cpio -pdm $ins_dir\n";
           print "chown -R $user_name $ins_dir\n";
           exit;
         }
@@ -1662,24 +1770,24 @@ sub create_spec {
   if ($option{'n'}=~/bsl/) {
     print SPEC_FILE "%post\n";
     print SPEC_FILE "/opt/%{distribution}/etc/$option{'n'}.postinstall\n";
-    print SPEC_FILE "/opt/%{distribution}/etc/$option{'n'}.preremove\n";
+    print SPEC_FILE "\n";
   }
   if ($option{'n'}=~/bsl/) {
     print SPEC_FILE "%preun\n";
-    print SPEC_FILE "\n";
+    print SPEC_FILE "/opt/%{distribution}/etc/$option{'n'}.preremove\n";
     print SPEC_FILE "\n";
   }
   if ($option{'n'}=~/rsa/) {
     print SPEC_FILE "%post\n";
-    print SPEC_FILE "rm /var/ace/sdopts.rec\n";
-    print SPEC_FILE "rm /var/ace/sdstatus*\n";
-    print SPEC_FILE "rm /var/ace/securid\n";
-    print SPEC_FILE "\n";
-    print SPEC_FILE "%preun\n";
     print SPEC_FILE "# Create /var/ace/sdopts.rec\n";
     print SPEC_FILE "host_name=`hostname`\n";
     print SPEC_FILE "host_ip=`host \$host_name |awk '{print \$4}'`\n";
     print SPEC_FILE "echo \"CLIENT_IP=\$host_ip\" > /var/ace/sdopts.rec\n";
+    print SPEC_FILE "\n";
+    print SPEC_FILE "%preun\n";
+    print SPEC_FILE "rm /var/ace/sdopts.rec\n";
+    print SPEC_FILE "rm /var/ace/sdstatus*\n";
+    print SPEC_FILE "rm /var/ace/securid\n";
     print SPEC_FILE "\n";
   }
   print SPEC_FILE "%changelog\n";
@@ -1690,6 +1798,22 @@ sub create_spec {
   close SPEC_FILE;
   return;
 
+}
+
+# Run a command, report failures and optionally exit on them
+
+sub run_command {
+  my $command=$_[0];
+  my $fatal=$_[1];
+  my $status=system("$command");
+
+  if ($status!=0) {
+    print "Command failed (exit status ".($status>>8)."): $command\n";
+    if ($fatal) {
+      exit 1;
+    }
+  }
+  return($status);
 }
 
 sub print_debug {
@@ -1722,7 +1846,7 @@ sub create_rpm {
   my $command="rpmbuild -ba --define \"_topdir $work_dir\" $spec_file";
 
   print_debug("Executing: $command","long");
-  system("$command");
+  run_command($command,1);
   return;
 
 }
