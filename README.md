@@ -13,7 +13,7 @@ BURST builds a package from a source tarball. It will try to guess the package n
 ## Status
 
 > [!WARNING]
-> Versions 1.4.4 to 1.7.2 contain a large number of bug fixes and robustness changes that have **not been tested**.
+> Versions 1.4.4 to 1.7.5 contain a large number of bug fixes and robustness changes that have **not been tested**.
 > They were made by reviewing the code. Only syntax checks (`perl -c`) and a few isolated checks were run, with no real builds on Solaris or Linux.
 
 Please test before relying on it, especially:

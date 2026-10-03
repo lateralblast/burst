@@ -4,6 +4,11 @@ All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.7.5] - 2026-10-03
+
+- Cleaned up script to follow Perl best practices: enabled warnings, lexical filehandles with three argument open, fixed the [A-z] character class, read the script version and $HOME natively instead of shelling out, and initialised variables to avoid uninitialised value warnings
+- Error conditions (missing source, missing patch, unsupported archive, missing dependency) now exit non-zero instead of 0
+
 ## [1.7.4] - 2026-10-03
 
 - Added a compile-time check that installs missing perl modules (Getopt::Std, File::Basename) with cpanm or cpan
